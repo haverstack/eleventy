@@ -1,6 +1,6 @@
 {
   "name": "@haverstack/eleventy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Eleventy plugin that builds a static site from a Haverstack stack — records are the content source, no content files on disk",
   "type": "module",
   "exports": {
@@ -41,7 +41,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm run format",
+    "release": "pnpm run build && changeset publish"
   },
   "peerDependencies": {
     "@11ty/eleventy": ">=3.0.0"
@@ -54,6 +57,8 @@
   },
   "devDependencies": {
     "@11ty/eleventy": "^3.1.6",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.2",
     "@eslint/js": "^10.0.1",
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.0.0",
