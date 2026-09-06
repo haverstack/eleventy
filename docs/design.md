@@ -234,9 +234,10 @@ false` opts out entirely.
   last — is the substitute.
 
 What stays out of reach: `--serve` rebuilds are full rebuilds (content is in the stack,
-not in files Eleventy can watch — see [Deferred](#deferred)), and shortcodes inside a
-record's markdown body aren't evaluated (bodies are content, not templates; a layout
-that wants them renders `bodyRaw` through its own pipeline).
+not in files Eleventy can watch — see [Rebuilding on change](#rebuilding-on-change) for
+how to do better), and shortcodes inside a record's markdown body aren't evaluated
+(bodies are content, not templates; a layout that wants them renders `bodyRaw` through
+its own pipeline).
 
 ---
 
@@ -313,8 +314,76 @@ trusted than another, splitting the stack is the answer, not splitting the site 
 
 ## Deferred
 
-- **Incremental watch.** `--serve` rebuilds are full rebuilds. Content lives in the
-  stack, not on disk, so Eleventy's file watcher sees nothing; picking up stack changes
-  needs the change feed and a sentinel-file watch target.
 - **Curated collections.** `page-meta.order` and hand-ordered listings; v1 supports only
   the commons query-based `collection` with keyword sort.
+- **Rebuild avoidance** — every build is a full build; see the next section.
+
+## Rebuilding on change
+
+Every build today is a full one: a full query sweep, a full resolve, a full re-emit.
+`--serve` redoes all of it on a poll interval or a manual restart. At personal-site
+scale that is sub-second and fine. Two ways to do better, in increasing order of effort:
+
+### A "did anything change?" gate (one-shot / CI)
+
+`RecordFilter.updatedAt` takes a `{ after: Date }`, so a build can ask whether anything
+relevant changed since last time and, if not, exit before emitting — the deploy step
+then sees no diff. No server, works with `LocalAdapter`.
+
+Sketch:
+
+1. After a successful build, persist the **maximum `updatedAt` actually observed**
+   (not `Date.now()` — a write that landed mid-build must not be skipped next time),
+   alongside the set of permalinks emitted.
+2. Next build, for each relevant type run
+   `query({ filter: { typeId, updatedAt: { after: last }, includeDeleted: true, includeUnlisted: true } })`,
+   looping the cursor as everywhere else.
+3. Empty result → skip load/resolve/emit entirely.
+4. Non-empty → full build, then rewrite the state file.
+
+Things that make this subtle:
+
+- **Query every type the build reads, not just members.** A `page-meta`, `menu`,
+  `site`, or `_attachment` edit moves _that_ record's `updatedAt`, not the described
+  record's.
+- **Associations count** — `associate` / `dissociate` bump `version` / `updatedAt`, so a
+  new `site` membership or `embed` is caught.
+- **Hard deletes (purges) are not caught** — nothing is left to query. Soft deletes show
+  with `includeDeleted: true`; for purges, diff the persisted permalink set against what
+  now resolves, or accept that a purge needs a manual full rebuild.
+- `total` is `null` under a scoped credential, so the gate query obeys the same
+  cursor-to-exhaustion rule as the load phase.
+
+### A watching `--serve` (needs a stack server)
+
+The plugin holds a subscription and triggers Eleventy's normal rebuild when a change
+arrives. Full rebuild per change — not page-level; see the next section for why that is
+the right call.
+
+- `stack.subscribe(handler, { includeRecords: true, includeUnlisted: true, since: cursor })`.
+  Persist each delivered change's `seq` and pass it back as `since` on restart, so
+  changes during downtime are not missed. `onReset` means the gap could not be closed —
+  fall back to a full reconcile by query.
+- **This needs `APIAdapter`.** `LocalAdapter` has no `subscribeChanges`: `subscribe()`
+  there only reports the calling process's own writes (and the build writes nothing),
+  and `since` throws. A local file is also single-writer, so the editor and
+  `eleventy --serve` cannot both hold it. So watch mode means: run a stack server —
+  `localhost` is fine — with both the editor and the build connecting over the API.
+  Against a bare local file, poll-and-full-rebuild or restart are the only options.
+- **Eleventy's watcher only watches files.** Bridge it: on a relevant `RecordChange`,
+  `touch` a sentinel file registered with `eleventyConfig.addWatchTarget`. Eleventy runs
+  its normal rebuild; the plugin's fresh queries pick up the change. No sentinel is
+  needed if the integration drives Eleventy programmatically instead.
+- The subscription's `ChangeFilter` only narrows by `typeId` / `parentId` / `entityId` /
+  `kinds` — not content or associations — so expect changes the current site does not
+  care about and let the rebuild sort it out. Publishing a record (clearing
+  `unlistedAt`) arrives as an ordinary `changed` event, so no special case.
+
+### Why not page-level incremental
+
+Re-emitting only the outputs a changed record affects needs a record → output dependency
+graph, and the fan-out is wide: one changed article touches its own page, every listing
+it belongs to, any menu pointing at it, every feed, the sitemap, and — for a
+cross-posted record — another site's cross-links. Building and maintaining that graph is
+a real project, and full rebuilds stay fast well past personal-site scale. This is worth
+doing only once a stack is large enough that a full rebuild is genuinely slow.
