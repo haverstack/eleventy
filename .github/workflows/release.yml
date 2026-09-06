@@ -9,6 +9,7 @@ concurrency: release-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # OIDC for npm Trusted Publishing
 
 jobs:
   release:
@@ -22,16 +23,25 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # npm's OIDC Trusted Publishing needs npm >= 11.5.1; setup-node ships older.
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
 
-      # Opens or updates a "chore: version packages" PR whenever changesets
-      # are pending. Merging that PR lands the version bump and CHANGELOG on
-      # main. Publishing to npm is deliberate: run `pnpm run release` after
-      # the merge, or add a `publish:` line here plus an NPM_TOKEN secret.
-      - uses: changesets/action@v1
+      # Pending changesets -> open/update a "chore: version packages" PR.
+      - id: changesets
+        uses: changesets/action@v1
         with:
           version: pnpm run version-packages
           commit: 'chore: version packages'
           title: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # No pending changesets (the version PR just merged, or nothing to do) ->
+      # publish. `changeset publish` no-ops when the version is already on npm.
+      # Auth is the repo's Trusted Publisher (OIDC) — no NPM_TOKEN.
+      - if: steps.changesets.outputs.hasChangesets == 'false'
+        run: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

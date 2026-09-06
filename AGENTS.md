@@ -41,8 +41,12 @@ Carried from `@haverstack/core`:
 ## Changesets
 
 Every change that ships to npm carries a changeset (`pnpm changeset`). `patch` for
-anything a consumer cannot observe; `minor` for anything they can (every package is
-`0.x`, so minor is the breaking slot). No changeset for tests, CI, or repo tooling.
+anything a consumer cannot observe; `minor` for anything they can (`0.x`, so minor is
+the breaking slot). No changeset for tests, CI, or repo tooling.
+
+Releasing is automated (`.github/workflows/release.yml`): pushing changesets to `main`
+opens a `chore: version packages` PR that consumes them and bumps the version; merging
+it publishes to npm via the repo's Trusted Publisher (OIDC — no `NPM_TOKEN`).
 
 ## Commits and pull requests
 
