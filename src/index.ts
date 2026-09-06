@@ -15,20 +15,29 @@
  * }
  * ```
  *
- * See eleventy-integration.md for the design. This entry wires option
- * handling, type registration and the load phase; resolve, asset staging
- * and emit land next.
+ * See eleventy-integration.md for the design. Load → resolve → emit run at
+ * plugin-init time; the plugin adds one virtual template per page and
+ * member, the feeds, the sitemap, and `haverstack` global data.
  */
 
 import type { Stack } from '@haverstack/core';
 import { defineEleventyTypes } from './types.js';
 import { load } from './load.js';
 import { resolve, type SlugStrategy } from './resolve.js';
+import { emit, type EmitEleventyConfig } from './emit.js';
 
 export * from './types.js';
 export * from './errors.js';
 export * from './load.js';
 export * from './resolve.js';
+export * from './assets.js';
+export * from './markdown.js';
+export * from './feeds.js';
+export * from './templates.js';
+export * from './emit.js';
+
+const DEFAULT_ASSET_DIR = '_stack-assets';
+const DEFAULT_FEED_LIMIT = 20;
 
 export interface HaverstackPluginOptions {
   /**
@@ -44,23 +53,23 @@ export interface HaverstackPluginOptions {
    * with no `site@1` records — the single-site case.
    */
   site?: string;
-  /** Directory the staged attachment bytes are written to and passed through. */
+  /** Directory the staged attachment bytes are written to and passed through. Default `_stack-assets`. */
   assetDir?: string;
-  /** This site's permalink-derivation policy for listing members. */
+  /** This site's permalink-derivation policy for listing members. Default `'title'`. */
   slugStrategy?: SlugStrategy;
+  /** Maximum entries per Atom feed. Default 20. */
+  feedLimit?: number;
 }
 
-/** The subset of Eleventy's config object this plugin uses. Widened as later phases land. */
-export interface EleventyConfig {
-  addPassthroughCopy(path: string | Record<string, string>): unknown;
-}
+/** The subset of Eleventy's config object this plugin uses. */
+export type EleventyConfig = EmitEleventyConfig;
 
 /**
  * The Eleventy plugin. Registered the ordinary way with
  * `eleventyConfig.addPlugin(haverstack, options)`.
  */
 export async function haverstack(
-  _eleventyConfig: EleventyConfig,
+  eleventyConfig: EleventyConfig,
   options: HaverstackPluginOptions,
 ): Promise<void> {
   if (!options || !options.stack) {
@@ -76,14 +85,22 @@ export async function haverstack(
   const unlisted = index.unlistedVisible
     ? ''
     : ' — unlisted records not visible under this credential';
-  console.info(
-    `[haverstack] resolved ${name}: ${resolved.pagesByUrl.size} pages, ${resolved.members.length} members, ` +
-      `${resolved.collections.size} collections, ${resolved.menus.size} menus, ` +
-      `${resolved.warnings.length} warning(s)${unlisted}`,
-  );
-  for (const w of resolved.warnings) console.warn(`[haverstack]   ! ${w.message}`);
+  for (const w of resolved.warnings) console.warn(`[haverstack]  ! ${w.message}`);
 
-  // Stage assets, emit — attach here.
+  const result = await emit({
+    eleventyConfig,
+    stack: options.stack,
+    resolved,
+    index,
+    assetDir: options.assetDir ?? DEFAULT_ASSET_DIR,
+    feedLimit: options.feedLimit ?? DEFAULT_FEED_LIMIT,
+  });
+
+  console.info(
+    `[haverstack] ${name}: ${result.pages} pages, ${result.members} members, ` +
+      `${result.feeds} feeds, assets ${result.assets.written} written / ${result.assets.skipped} cached` +
+      `${resolved.warnings.length ? `, ${resolved.warnings.length} warning(s)` : ''}${unlisted}`,
+  );
 }
 
 export default haverstack;

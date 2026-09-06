@@ -3,10 +3,11 @@
 An Eleventy plugin that builds a static site from a [Haverstack](https://github.com/haverstack/core)
 stack. Records are the content source; there are no content files on disk.
 
-> **Status:** Early development. Type registration is in place; load, resolve, asset
-> staging, emit, and the `check` / `publish` commands are being built out. See
-> [`eleventy-integration.md`](../eleventy-integration.md) and
-> [`site-generator-types.md`](../site-generator-types.md) for the design.
+> **Status:** Early development. The build pipeline works end to end — load, resolve,
+> asset staging, markdown, and emit (pages, collections, feeds, sitemap, built-in
+> templates). Still to come: overriding the built-in templates with a site's own, and the
+> `check` / `publish` commands. See [`eleventy-integration.md`](../eleventy-integration.md)
+> and [`site-generator-types.md`](../site-generator-types.md) for the design.
 
 ## Usage
 
