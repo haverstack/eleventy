@@ -165,4 +165,38 @@ describe('stageAssets', () => {
     expect(second.written).toBe(0);
     expect(second.skipped).toBe(plan.files.size);
   });
+
+  test('writes more files than the download concurrency limit', async () => {
+    const site = await stack.create(
+      SITE.id,
+      { title: 'T', baseUrl: 'https://ex.test', handle: 't' },
+      { permissions: PUBLIC },
+    );
+    await stack.create(
+      PAGE.id,
+      { slug: 'g', text: 'x', publishedAt: iso('2025-01-01'), collection: { typeId: PHOTO.id } },
+      { parentId: site.id, permissions: PUBLIC },
+    );
+    const fileIds: string[] = [];
+    for (let i = 0; i < 15; i++) {
+      const bytes = new Uint8Array([...PNG, i]); // distinct bytes → distinct fileId
+      const img = await stack.putAttachment(bytes, 'image/png', `p${i}.png`);
+      fileIds.push(img.content.fileId);
+      await stack.create(
+        PHOTO.id,
+        { image: img.content.fileId, alt: `p${i}` },
+        { permissions: PUBLIC, associations: [onSite(site.id)] },
+      );
+    }
+
+    const { index, resolved } = await resolvedIndex();
+    const plan = collectAssets(resolved, index, '_stack-assets');
+    const dir = await mkdtemp(join(tmpdir(), 'hs-pool-'));
+    const result = await stageAssets(stack, plan, dir);
+
+    expect(result.written).toBe(15);
+    for (const fileId of fileIds) {
+      expect(existsSync(join(dir, `${fileId}.png`))).toBe(true);
+    }
+  });
 });

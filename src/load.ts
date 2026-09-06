@@ -6,8 +6,7 @@
  * structure, and groups records for lookup. Every decision — cascades,
  * collisions, permalinks, collection membership — belongs to resolve.
  *
- * Two disciplines the sketch (eleventy-integration.md § Load) is emphatic
- * about, both enforced here:
+ * Two disciplines this phase enforces (see docs/design.md § Load):
  *
  *   - Every query loops on the cursor to exhaustion. `cursor === null` is
  *     the only end-of-results signal; a short or empty page is not. `total`
@@ -266,29 +265,35 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
 
   const sidecarsByParent = groupSidecars(allSidecars, site?.id);
 
-  // Collection candidates: run each listing root's query, scoped to this
-  // site by a `relatedTo` clause (omitted on a single-site stack). This is
-  // the query construction — mechanical; the draft convention, sort and
-  // permalinks that turn candidates into a listing are resolve's.
-  const membersByListingRoot = new Map<RecordId, StackRecord[]>();
-  for (const node of pagesById.values()) {
-    const spec = node.record.content.collection as CollectionSpec | undefined;
-    if (!spec?.typeId) continue;
-    const members = await queryAll(stack, {
-      typeId: spec.typeId,
-      ...(spec.tag ? { tags: [spec.tag] } : {}),
-      ...(site
-        ? {
-            relatedTo: {
-              label: SITE_MEMBERSHIP_LABEL,
-              target: { scope: 'record', recordId: site.id },
-            },
-          }
-        : {}),
-      ...unlisted,
-    });
-    membersByListingRoot.set(node.record.id, members);
-  }
+  // Collection candidates: one query per listing root, scoped to this site
+  // by a `relatedTo` clause (omitted on a single-site stack). Query
+  // construction only — the draft convention, sort and permalinks that turn
+  // candidates into a listing are resolve's. The roots run concurrently:
+  // over a remote stack these are the calls that add up.
+  const listingNodes = [...pagesById.values()].filter(
+    (n) => (n.record.content.collection as CollectionSpec | undefined)?.typeId,
+  );
+  const listingMembers = await Promise.all(
+    listingNodes.map((node) => {
+      const spec = node.record.content.collection as CollectionSpec;
+      return queryAll(stack, {
+        typeId: spec.typeId,
+        ...(spec.tag ? { tags: [spec.tag] } : {}),
+        ...(site
+          ? {
+              relatedTo: {
+                label: SITE_MEMBERSHIP_LABEL,
+                target: { scope: 'record', recordId: site.id },
+              },
+            }
+          : {}),
+        ...unlisted,
+      });
+    }),
+  );
+  const membersByListingRoot = new Map<RecordId, StackRecord[]>(
+    listingNodes.map((node, i) => [node.record.id, listingMembers[i]]),
+  );
 
   const menusByHandle = new Map<string, StackRecord[]>();
   for (const menu of allMenus) {

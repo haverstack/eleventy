@@ -9,8 +9,7 @@
  * `collectAssets` is pure — it decides which files a site needs and what
  * they will be named. `stageAssets` does the fetching and writing.
  *
- * See eleventy-integration.md § Stage assets and site-generator-types.md
- * § Embedded media.
+ * See docs/design.md § Stage assets.
  */
 
 import { existsSync } from 'node:fs';
@@ -155,10 +154,13 @@ export interface StageResult {
   skipped: number;
 }
 
+/** How many attachments to fetch at once — a remote stack is the case this bounds. */
+const DOWNLOAD_CONCURRENCY = 6;
+
 /**
  * Fetch and write every file in `plan` into `outDir`, skipping any that
  * are already there — the content-addressed cache. `outDir` is the
- * on-disk location of `plan.assetDir`.
+ * on-disk location of `plan.assetDir`. Downloads run in a bounded pool.
  */
 export async function stageAssets(
   stack: StackClient,
@@ -166,17 +168,23 @@ export async function stageAssets(
   outDir: string,
 ): Promise<StageResult> {
   await mkdir(outDir, { recursive: true });
-  let written = 0;
+
+  const toFetch: StagedFile[] = [];
   let skipped = 0;
   for (const file of plan.files.values()) {
-    const dest = join(outDir, file.fileName);
-    if (existsSync(dest)) {
-      skipped++;
-      continue;
-    }
-    const bytes = await stack.getAttachment(file.fileId);
-    await writeFile(dest, bytes);
-    written++;
+    if (existsSync(join(outDir, file.fileName))) skipped++;
+    else toFetch.push(file);
   }
-  return { written, skipped };
+
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < toFetch.length) {
+      const file = toFetch[next++];
+      const bytes = await stack.getAttachment(file.fileId);
+      await writeFile(join(outDir, file.fileName), bytes);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, toFetch.length) }, worker));
+
+  return { written: toFetch.length, skipped };
 }
