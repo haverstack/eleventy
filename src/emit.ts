@@ -13,10 +13,24 @@ import { resolve as resolvePath } from 'node:path';
 import type { StackClient } from '@haverstack/core';
 import { collectAssets, stageAssets, type AssetPlan } from './assets.js';
 import { atomFeed, feedSpecs, sitemapXml } from './feeds.js';
-import { renderMember, renderPage, type RenderContext } from './templates.js';
+import {
+  renderMember,
+  renderMemberFragment,
+  renderPage,
+  renderPageFragment,
+  type RenderContext,
+} from './templates.js';
 import { renderBody } from './markdown.js';
 import type { StackIndex } from './load.js';
 import type { ResolvedPage, ResolvedSite } from './resolve.js';
+
+/**
+ * Maps a `template` name to a layout the site provides in its own
+ * `_includes`. A mapped page emits its content fragment plus that
+ * `layout`; an unmapped one keeps the self-contained built-in render.
+ * `base` is the fallback for any name not otherwise listed.
+ */
+export type TemplateOverrides = { base?: string } & Record<string, string | undefined>;
 
 export interface EmitEleventyConfig {
   addTemplate(virtualPath: string, content: string, data?: Record<string, unknown>): unknown;
@@ -34,6 +48,8 @@ export interface EmitOptions {
   feedLimit: number;
   /** Directory `assetDir` is resolved against when staging bytes. Default `process.cwd()`. */
   cwd?: string;
+  /** Per-template-name layout overrides. Unmapped names use the built-in render. */
+  templates?: TemplateOverrides;
 }
 
 export interface EmitResult {
@@ -86,26 +102,40 @@ export async function emit(opts: EmitOptions): Promise<EmitResult> {
 
   const feeds = feedSpecs(resolved);
   const ctx: RenderContext = { resolved, assets, feeds, bodyByRecord };
+  const overrides = opts.templates;
+  const layoutFor = (name: string): string | undefined => overrides?.[name] ?? overrides?.base;
 
   for (const page of allPages) {
-    eleventyConfig.addTemplate(`haverstack/page-${page.record.id}.html`, renderPage(page, ctx), {
-      ...PASSTHROUGH_ENGINE,
-      permalink: page.url,
-      record: page.record,
-      meta: page.meta,
-      url: page.url,
-      unlisted: page.unlisted,
-      haverstackTemplate: page.template,
-    });
+    const layout = layoutFor(page.template);
+    const collection = resolved.collections.get(String(page.record.content.slug));
+    eleventyConfig.addTemplate(
+      `haverstack/page-${page.record.id}.html`,
+      layout ? renderPageFragment(page, ctx) : renderPage(page, ctx),
+      {
+        ...PASSTHROUGH_ENGINE,
+        ...(layout ? { layout } : {}),
+        permalink: page.url,
+        title: page.record.content.title ?? null,
+        record: page.record,
+        meta: page.meta,
+        url: page.url,
+        unlisted: page.unlisted,
+        haverstackTemplate: page.template,
+        ...(collection ? { collection } : {}),
+      },
+    );
   }
 
   for (const member of resolved.members) {
+    const layout = layoutFor(member.template);
     eleventyConfig.addTemplate(
       `haverstack/member-${member.record.id}.html`,
-      renderMember(member, ctx),
+      layout ? renderMemberFragment(member, ctx) : renderMember(member, ctx),
       {
         ...PASSTHROUGH_ENGINE,
+        ...(layout ? { layout } : {}),
         permalink: member.url,
+        title: member.record.content.title ?? member.record.content.caption ?? null,
         record: member.record,
         meta: member.meta,
         url: member.url,

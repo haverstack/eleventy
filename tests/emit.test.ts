@@ -53,7 +53,7 @@ beforeEach(async () => {
   await defineEleventyTypes(stack);
 });
 
-async function runEmit() {
+async function runEmit(templates?: Record<string, string>) {
   const site = await stack.create(
     SITE.id,
     { title: 'T', baseUrl: 'https://ex.test', handle: 't' },
@@ -98,6 +98,7 @@ async function runEmit() {
     assetDir: '_stack-assets',
     feedLimit: 20,
     cwd,
+    templates,
   });
   return { config, result, resolved };
 }
@@ -140,5 +141,26 @@ describe('emit', () => {
     expect(result.pages).toBe(2);
     expect(result.members).toBe(2); // Live one + Old one; Draft one excluded
     expect(result.feeds).toBe(1);
+  });
+
+  test('a mapped template emits a content fragment plus the site layout', async () => {
+    const { config } = await runEmit({ home: 'my-home' });
+    const home = config.byPermalink('/')!;
+    expect(home.data.layout).toBe('my-home');
+    expect(home.content).not.toContain('<!doctype');
+    expect(home.content).toContain('<article>');
+
+    // Unmapped: still the self-contained built-in document.
+    const article = config.byPermalink('/blog/live-one/')!;
+    expect(article.data.layout).toBeUndefined();
+    expect(article.content).toContain('<!doctype');
+  });
+
+  test('`base` catches every unmapped template, and listing pages carry their collection', async () => {
+    const { config } = await runEmit({ base: 'site-base' });
+    expect(config.byPermalink('/blog/live-one/')?.data.layout).toBe('site-base');
+    const blog = config.byPermalink('/blog/')!;
+    expect(blog.data.layout).toBe('site-base');
+    expect((blog.data.collection as { members: unknown[] }).members).toHaveLength(1);
   });
 });

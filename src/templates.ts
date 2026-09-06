@@ -165,12 +165,30 @@ function memberMain(member: ResolvedMember, body: string, ctx: RenderContext): s
   return `<article>\n${heading}${publishedTime(record)}\n${body}\n${linkOut}\n</article>`;
 }
 
+/**
+ * The inner content for a page when its `template` is mapped to a site
+ * layout: the page's own rendered body, no chrome and no member list. A
+ * listing layout builds its list from the `collection` in page data; this
+ * is just the intro. `content`/`home` get the `<article>` wrapper.
+ */
+export function renderPageFragment(page: ResolvedPage, ctx: RenderContext): string {
+  const body = ctx.bodyByRecord.get(page.record.id) ?? '';
+  if (page.template === 'listing' || page.template === 'listing-inline') return body;
+  // The home page's body usually carries its own hero heading; don't double it.
+  return contentMain(page.template === 'home' ? undefined : page.record.content.title, body);
+}
+
+/** Inner content for a member — the `<article>` / `<figure>` markup, no chrome. */
+export function renderMemberFragment(member: ResolvedMember, ctx: RenderContext): string {
+  return memberMain(member, ctx.bodyByRecord.get(member.record.id) ?? '', ctx);
+}
+
+/** A complete HTML document for a page, using the built-in chrome. */
 export function renderPage(page: ResolvedPage, ctx: RenderContext): string {
   const body = ctx.bodyByRecord.get(page.record.id) ?? '';
   let main: string;
   if (page.template === 'listing') main = listingMain(page, body, ctx);
   else if (page.template === 'listing-inline') main = listingInlineMain(page, body, ctx);
-  // The home page's body usually carries its own hero heading; don't double it.
   else main = contentMain(page.template === 'home' ? undefined : page.record.content.title, body);
 
   return documentShell({
@@ -181,13 +199,13 @@ export function renderPage(page: ResolvedPage, ctx: RenderContext): string {
   });
 }
 
+/** A complete HTML document for a member, using the built-in chrome. */
 export function renderMember(member: ResolvedMember, ctx: RenderContext): string {
-  const body = ctx.bodyByRecord.get(member.record.id) ?? '';
   return documentShell({
     title: String(member.record.content.title ?? member.record.content.caption ?? ''),
     resolved: ctx.resolved,
     feeds: ctx.feeds,
     canonical: member.canonical,
-    main: memberMain(member, body, ctx),
+    main: renderMemberFragment(member, ctx),
   });
 }

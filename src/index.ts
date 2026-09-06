@@ -24,7 +24,7 @@ import type { Stack } from '@haverstack/core';
 import { defineEleventyTypes } from './types.js';
 import { load } from './load.js';
 import { resolve, type SlugStrategy } from './resolve.js';
-import { emit, type EmitEleventyConfig } from './emit.js';
+import { emit, type EmitEleventyConfig, type TemplateOverrides } from './emit.js';
 
 export * from './types.js';
 export * from './errors.js';
@@ -61,6 +61,17 @@ export interface HaverstackPluginOptions {
   slugStrategy?: SlugStrategy;
   /** Maximum entries per Atom feed. Default 20. */
   feedLimit?: number;
+  /**
+   * Replace the built-in templates with the site's own. Maps a `template`
+   * name (`home`, `content`, `listing`, `listing-inline`, `article`,
+   * `post`, `photo`, `bookmark`, or a custom name from a sidecar) to a
+   * layout the site provides in its `_includes`. A mapped page emits its
+   * content fragment plus that `layout`; the layout receives `content`
+   * plus `record`, `meta`, `url`, `collection`, and the `haverstack`
+   * globals, and may chain to another layout. `base` catches every
+   * unmapped name; anything still unmapped uses the built-in render.
+   */
+  templates?: TemplateOverrides;
 }
 
 /** The subset of Eleventy's config object this plugin uses. */
@@ -96,6 +107,7 @@ export async function haverstack(
     index,
     assetDir: options.assetDir ?? DEFAULT_ASSET_DIR,
     feedLimit: options.feedLimit ?? DEFAULT_FEED_LIMIT,
+    templates: options.templates,
   });
 
   console.info(

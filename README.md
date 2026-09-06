@@ -3,10 +3,10 @@
 An Eleventy plugin that builds a static site from a [Haverstack](https://github.com/haverstack/core)
 stack. Records are the content source; there are no content files on disk.
 
-> **Status:** Early development. The build pipeline works end to end — load, resolve,
-> asset staging, markdown, emit (pages, collections, feeds, sitemap, built-in templates),
-> and the `check` / `publish` commands. Still to come: overriding the built-in templates
-> with a site's own. See [`eleventy-integration.md`](../eleventy-integration.md) and
+> **Status:** Early development, but the whole pipeline works — load, resolve, asset
+> staging, markdown, emit (pages, collections, feeds, sitemap), built-in templates that a
+> site can override with its own, and the `check` / `publish` commands. See
+> [`eleventy-integration.md`](../eleventy-integration.md) and
 > [`site-generator-types.md`](../site-generator-types.md) for the design.
 
 ## Usage
@@ -32,6 +32,22 @@ The plugin takes a `Stack`, not a URL — so a build can run against a remote se
 (`APIAdapter`), a local SQLite file (`LocalAdapter`), or an in-memory stack
 (`MemoryAdapter`, for tests). Whoever constructs the stack has already dealt with auth;
 the plugin never handles credentials and never writes.
+
+Out of the box it renders a legible site with its built-in templates. To use your own,
+map `template` names to layouts in your `_includes`:
+
+```js
+eleventyConfig.addPlugin(haverstack, {
+  stack,
+  site: 'personal',
+  templates: { base: 'layouts/base', listing: 'layouts/index', article: 'layouts/longform' },
+});
+```
+
+A mapped page emits its content fragment (`{{ content }}`) plus `record`, `meta`, `url`,
+`collection`, and the `haverstack` globals; the layout does the rest and may chain to
+another. `base` catches any unmapped name; anything still unmapped keeps the built-in
+render.
 
 ## Types
 
