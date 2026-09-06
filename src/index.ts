@@ -15,15 +15,18 @@
  * }
  * ```
  *
- * See eleventy-integration.md for the design. This entry currently wires
- * option handling and type registration (phase 1); load, resolve, asset
- * staging and emit land in later phases.
+ * See eleventy-integration.md for the design. This entry wires option
+ * handling, type registration and the load phase; resolve, asset staging
+ * and emit land next.
  */
 
 import type { Stack, StackRecord } from '@haverstack/core';
 import { defineEleventyTypes } from './types.js';
+import { load } from './load.js';
 
 export * from './types.js';
+export * from './errors.js';
+export * from './load.js';
 
 /**
  * How this site derives a permalink for a listing member when no sidecar
@@ -72,7 +75,18 @@ export async function haverstack(
 
   await defineEleventyTypes(options.stack);
 
-  // Phases 2–4 — load, resolve, stage assets, emit — attach here.
+  const index = await load(options.stack, { site: options.site });
+
+  const name = index.site ? `"${index.site.content.title as string}"` : 'the single site';
+  const unlisted = index.unlistedVisible
+    ? ''
+    : ' (unlisted records not visible under this credential)';
+  console.info(
+    `[haverstack] loaded ${name}: ${index.pagesById.size} pages, ${index.menus.length} menus, ` +
+      `${index.attachmentsByFileId.size} attachment files${unlisted}`,
+  );
+
+  // Resolve, stage assets, emit — attach here.
 }
 
 export default haverstack;
