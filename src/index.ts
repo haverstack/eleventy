@@ -15,7 +15,7 @@
  * }
  * ```
  *
- * See eleventy-integration.md for the design. Load → resolve → emit run at
+ * See docs/design.md for the design. Load → resolve → emit run at
  * plugin-init time; the plugin adds one virtual template per page and
  * member, the feeds, the sitemap, and `haverstack` global data.
  */
@@ -46,7 +46,7 @@ export interface HaverstackPluginOptions {
    * The stack to build from. Backed by any adapter — `APIAdapter` for a
    * remote server, `LocalAdapter` for an offline or CI build, `MemoryAdapter`
    * for tests. The plugin never writes through it; that discipline is a
-   * rule, not a guarantee. See eleventy-integration.md § It takes a Stack.
+   * rule, not a guarantee. See docs/design.md § It takes a Stack, not a URL.
    */
   stack: Stack;
   /**

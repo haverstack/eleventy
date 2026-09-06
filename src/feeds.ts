@@ -7,7 +7,7 @@
  * Absolute URLs come from the site record's `baseUrl`, so these need a
  * site record — a single-site stack with none gets neither.
  *
- * See eleventy-integration.md § Feeds and the sitemap.
+ * See docs/design.md § Feeds and the sitemap.
  */
 
 import type { StackRecord } from '@haverstack/core';

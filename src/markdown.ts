@@ -9,7 +9,7 @@
  *
  * `format` follows the commons vocabulary: `markdown` when absent, `plain`
  * when set, and any unrecognised value rendered as plain — never a richer
- * format than the record declares. See eleventy-integration.md § Markdown.
+ * format than the record declares. See docs/design.md § Markdown.
  */
 
 import MarkdownIt from 'markdown-it';

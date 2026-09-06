@@ -8,7 +8,7 @@
  * write credentials. So it is a separate command, run deliberately after
  * a successful build.
  *
- * See eleventy-integration.md § Publishing is a separate command.
+ * See docs/design.md § publish.
  */
 
 import type { Stack } from '@haverstack/core';

@@ -19,12 +19,11 @@ pnpm run typecheck
 
 Report results honestly. If something fails, say so with the output.
 
-## Design docs
+## Design doc
 
-`eleventy-integration.md` and `site-generator-types.md` (one directory up, in the dev
-workspace) are the design. A change to observable behavior updates the relevant doc in
-the same change. Where those docs disagree with the current `@haverstack/core` /
-`@haverstack/commons` API, the code follows core — the sketches predate some of it.
+[`docs/design.md`](./docs/design.md) describes how the plugin works and why. A change to
+observable behavior updates the relevant section in the same change. Module comments cite
+it as `docs/design.md § Section`.
 
 ## Conventions
 

@@ -5,9 +5,8 @@ stack. Records are the content source; there are no content files on disk.
 
 > **Status:** Early development, but the whole pipeline works — load, resolve, asset
 > staging, markdown, emit (pages, collections, feeds, sitemap), built-in templates that a
-> site can override with its own, and the `check` / `publish` commands. See
-> [`eleventy-integration.md`](../eleventy-integration.md) and
-> [`site-generator-types.md`](../site-generator-types.md) for the design.
+> site can override with its own, and the `check` / `publish` commands.
+> [`docs/design.md`](./docs/design.md) covers how it works and why.
 
 ## Usage
 

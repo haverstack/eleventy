@@ -8,7 +8,7 @@
  * defines them. The sidecars — `page-meta` and `menu` — are this package's
  * own, minted under `org.haverstack.eleventy`: a first-party namespace
  * under the same authority as the commons, but not a commons type and not
- * under commons governance. See site-generator-types.md § Namespace.
+ * under commons governance. See docs/design.md § Types.
  */
 
 import { Stack, StackPermissionError, type TypeId, type TypeSchema } from '@haverstack/core';
@@ -22,7 +22,7 @@ export const ELEVENTY_NAMESPACE = 'org.haverstack.eleventy';
  * package's own label, deliberately distinct from the commons `site`
  * membership convention below: a sidecar carrying `for-site` is published
  * nowhere — it is metadata that applies when that site builds. See
- * site-generator-types.md § Sidecars are scoped.
+ * docs/design.md § Sidecars are scoped, and they cascade.
  */
 export const FOR_SITE_LABEL = 'for-site';
 
@@ -46,7 +46,7 @@ export interface EleventyType {
  * `org.haverstack.eleventy/page-meta@1` — generator metadata about a record
  * it does not own, linked to that record by `parentId`. Every field is
  * optional: a page-meta record exists only when it has something to say.
- * See site-generator-types.md § page-meta.
+ * See docs/design.md § Types.
  */
 export const PAGE_META: EleventyType = {
   id: `${ELEVENTY_NAMESPACE}/page-meta@1`,
@@ -64,7 +64,7 @@ export const PAGE_META: EleventyType = {
  * `org.haverstack.eleventy/menu@1` — a named, ordered navigation menu
  * belonging to one site (`parentId` = the site). Items live in the content
  * array rather than as separate records because menus are small and edited
- * as a unit. See site-generator-types.md § menu.
+ * as a unit. See docs/design.md § Types.
  */
 export const MENU: EleventyType = {
   id: `${ELEVENTY_NAMESPACE}/menu@1`,

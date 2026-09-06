@@ -6,7 +6,7 @@
  * to disk first and passed through. Global data exposes the resolved
  * structures so a site that brings its own templates can iterate them.
  *
- * See eleventy-integration.md § Emit.
+ * See docs/design.md § Emit.
  */
 
 import { resolve as resolvePath } from 'node:path';

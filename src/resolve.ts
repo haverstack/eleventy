@@ -12,7 +12,7 @@
  * target, an item that names both `url` and `recordId` — are collected in
  * `warnings` and the build continues.
  *
- * See eleventy-integration.md § Resolve and site-generator-types.md.
+ * See docs/design.md § Resolve.
  */
 
 import type { RecordId, StackRecord } from '@haverstack/core';
@@ -25,7 +25,7 @@ import type { CollectionSpec, PageNode, SidecarSet, StackIndex } from './load.js
  * How this site derives a permalink for a listing member when no sidecar
  * overrides it. `'title'` slugifies the record's `title` (default);
  * `'recordId'` publishes under the opaque record id; a function lets the
- * site decide. See eleventy-integration.md § slugStrategy.
+ * site decide. See docs/design.md § slugStrategy.
  */
 export type SlugStrategy = 'title' | 'recordId' | ((record: StackRecord) => string);
 

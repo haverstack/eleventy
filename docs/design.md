@@ -1,0 +1,277 @@
+# `@haverstack/eleventy` — design
+
+An Eleventy plugin that builds a static site from a Haverstack stack. Records are the
+content source; there are no content files on disk. This document describes how it works
+and why the moving parts are where they are.
+
+---
+
+## It takes a Stack, not a URL
+
+The plugin is given a constructed `Stack`, not a connection string. A `Stack` can be
+backed by `APIAdapter` (a remote stack server), `LocalAdapter` (a SQLite file, for
+offline and CI builds), or `MemoryAdapter` (the plugin's own tests). A URL option would
+foreclose the last two. Taking a `Stack` also means the plugin never handles
+credentials: whoever constructs it has already dealt with auth, and the plugin inherits
+whatever session it carries.
+
+A `Stack` _can_ write. The build path never does — see [Commands](#commands) — but the
+capability is present, so that is a rule rather than a guarantee. The one apparent
+exception is `defineEleventyTypes`, which calls `defineType` for every type the
+integration reads or owns; registering an identical schema returns before any write, so
+this is a no-op on an already-populated stack.
+
+## One build, one site
+
+The `site` option names a `site@1` record by its `handle`, or by record id where no
+handle is set. Eleventy has one output directory per run, so a stack serving several
+sites means several configs and several builds — sharing templates and plugin code,
+differing in which site they name. Resolving `site` to zero or several records fails the
+build. A stack with no `site@1` records at all is the single-site case: omit the option,
+and the page tree is every page with no page ancestor.
+
+Everything downstream — permalinks, collections, menus, feeds, the sitemap — resolves
+within the named site. The other sites in the stack are visible only as link targets.
+
+Title, description and base URL come from the site record, because a second generator
+building the same site needs all three and none are rendering decisions. Config carries
+what is genuinely this build's business: `assetDir`, `slugStrategy`, `feedLimit`,
+`templates`.
+
+## `slugStrategy`
+
+How this site derives a permalink for a listing member when no sidecar overrides it:
+
+| Value                | Derives from                                            |
+| -------------------- | ------------------------------------------------------- |
+| `'title'`            | the record's `title`, slugified (default)               |
+| `'recordId'`         | the record id, for a site publishing under opaque paths |
+| `(record) => string` | whatever the site decides                               |
+
+It is config rather than record data because it is a rendering rule. Per-record
+exceptions are sidecars; this is the rule they are exceptions to.
+
+---
+
+## Types
+
+**Consumed** from the Schema Commons, registered exactly as defined: `site@1`, `page@1`,
+`article@1`, `post@1`, `photo@1`, `bookmark@1`, plus `_entity@1` and `_attachment@1`.
+
+**Owned**, minted under `org.haverstack.eleventy` — a first-party namespace under the
+same authority as the commons but outside its governance:
+
+### `org.haverstack.eleventy/page-meta@1`
+
+Generator metadata about a record it does not own, linked by `parentId`. Every field
+optional — a page-meta record exists only when it has something to say.
+
+| Field      | Meaning                                                                                                    |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `slug`     | Permalink override for a listing member. Absent → derived by `slugStrategy`.                               |
+| `template` | Which template renders this record, named in the site's own vocabulary. Absent → inferred.                 |
+| `order`    | Reserved for curated listings; not read yet.                                                               |
+| `hidden`   | Keep the record out of _this site's_ listings, feeds and navigation while still building it at its URL.    |
+| `draft`    | Keep the record from being built at all on _this site_. Closes the gap that `post@1` has no `publishedAt`. |
+
+### `org.haverstack.eleventy/menu@1`
+
+A named, ordered navigation menu belonging to one site (`parentId` = the site). Items
+live in the content array. Each item sets `url` **or** `recordId`, not both; `recordId`
+is resolved to a permalink at build time; ordering is the `order` field, not array
+position. Items may point across sites and carry `rel` (`me` for IndieWeb identity
+links).
+
+### Sidecars are scoped, and they cascade
+
+A record may have several `page-meta` sidecars: one unscoped, plus one per site that
+needs to describe it differently. A sidecar declares its scope with a `for-site`
+association:
+
+```ts
+{ kind: 'relationship', label: 'for-site', target: { scope: 'record', recordId: <site> } }
+```
+
+`for-site` is this package's own label, distinct from the commons `site` membership
+convention: a record carrying `site` is _published on_ that site; a sidecar carrying
+`for-site` is published nowhere — it is metadata that applies when that site builds.
+
+Resolution is a two-level cascade: take the unscoped sidecar, overlay the one scoped to
+the site being built, field by field. Two sidecars at the same scope for one record is a
+writer error — the build fails, naming both.
+
+### Membership
+
+A non-page record joins a site with a `site` relationship association to the site record.
+Two associations means both sites. A page's relationship to its site is containment
+(`parentId`); an article's is publication (the association) — the same hierarchy /
+collection split `page@1` already draws.
+
+### Unlisted, three ways
+
+| Axis              | Mechanism                                                       | Effect                                         |
+| ----------------- | --------------------------------------------------------------- | ---------------------------------------------- |
+| Draft             | `publishedAt` absent (types that have it), or `page-meta.draft` | not built at all on this site                  |
+| Global unlisted   | `record.unlistedAt` (core)                                      | built, reachable, in no index anywhere         |
+| Per-site unlisted | `page-meta.hidden`, `for-site` scoped                           | built, reachable, out of _this_ site's indexes |
+
+A record is excluded from a site's listings if **either** of the last two applies;
+checked independently because they answer different questions. `unlistedAt` is owner-only
+to enumerate (see [Access](#access)).
+
+---
+
+## Build phases
+
+### Load (`load.ts`)
+
+Resolve the site, then fetch every record the build needs and build in-memory indexes:
+the site record and every other `site@1`, the page tree pruned to this site's subtree,
+`page-meta` sidecars grouped by parent and split into unscoped / this-site / by-site,
+menus by handle, `_attachment@1` records grouped by `fileId` (earliest `createdAt`
+first), the owner `_entity@1`, and the raw collection candidates per listing root.
+
+Two disciplines this phase enforces:
+
+- **Every query loops the cursor to exhaustion.** `cursor === null` is the only
+  end-of-results signal — a short or empty page is not. `total` is `null` under a
+  permission-scoped query, so there is no count to check against.
+- **Every query passes `includeUnlisted: true`.** Unlisted records still build at their
+  URLs, so the build must see them; excluding them from listings is resolve's job.
+  `includeUnlisted` is owner-only, so a build under a scoped credential loses them —
+  `StackIndex.unlistedVisible` records whether that happened.
+
+### Resolve (`resolve.ts`)
+
+A pure function of the index and config. Applies the sidecar cascade; derives one URL
+per record (page paths from ancestor slugs with `index` dropped; member paths from
+`meta.slug` or `slugStrategy`, under their listing root); infers templates; classifies
+canonical URLs; filters and sorts collections (drafts dropped entirely, unlisted/hidden
+kept but out of the listing); resolves every menu `recordId` to a URL (a cross-site page
+target to an absolute URL on that site's `baseUrl`; a dangling target to a warning, not a
+crash).
+
+Fatal faults — two sidecars at one scope, two records at one path — are collected in
+`ResolvedSite.errors` and, when `strict` (the default), thrown together. Softer problems
+go in `warnings` and the build continues.
+
+### Stage assets (`assets.ts`)
+
+Eleventy does not emit binaries well, so attachment bytes are staged to disk before the
+build proper and passed through. `collectAssets` walks every built record for `embed`
+attachment associations and `file-ref` content fields (`photo.image`); `stageAssets`
+fetches and writes each file, skipping any already on disk — content addressing makes
+that cache trivially correct.
+
+The body refers to an embedded file by filename, resolved per record (filenames are not
+unique across a stack). Every `_attachment@1` name for a shared `fileId` maps to the one
+staged path.
+
+### Emit (`emit.ts`)
+
+- `addTemplate` per page and per member — this is what turns records into pages without
+  files on disk. Drafts are not emitted; unlisted members are.
+- The feeds and the sitemap (below).
+- `haverstack` global data — `site`, `sites`, `owner`, `pages`, `menus`, `collections` —
+  so a site bringing its own templates can iterate them.
+
+## Markdown (`markdown.ts`)
+
+A plugin-owned markdown-it instance, so record bodies render the same regardless of the
+host's markdown config. Embed substitution runs **before** parsing (it rewrites link and
+image targets in the source text); the result is sanitized, because a stack can hold
+records written by more than one person. `format` follows the commons vocabulary:
+`markdown` when absent, `plain` when set, and any unrecognised value rendered as plain —
+never a richer format than the record declares.
+
+## Feeds and the sitemap (`feeds.ts`)
+
+Output, not records: renderings of the collections the page tree already describes, one
+set per site. An Atom feed per listing root plus a combined `/feeds/all.xml`; the sitemap
+is every resolved permalink minus the unlisted ones. Absolute URLs come from the site
+record's `baseUrl`, so a single-site stack with no site record gets neither.
+
+## Templates (`templates.ts`, `emit.ts`)
+
+Out of the box the plugin renders complete HTML documents with a small built-in set. The
+`templates` option maps a `template` name to a layout the site provides in its
+`_includes`; a mapped page emits its content fragment plus data (`record`, `meta`, `url`,
+`canonical`, `collection`, and the `haverstack` globals) and Eleventy renders it through
+the site's layout, which may chain to another. `base` catches any unmapped name; anything
+still unmapped keeps the built-in render, so doing nothing still builds a site. For a
+mapped listing the fragment is just the intro body — the layout builds the member list
+from `collection`.
+
+---
+
+## Commands
+
+The `haverstack-eleventy` CLI reads the stack from a config module (`--config`, default
+`./haverstack.config.mjs`) that default-exports a `Stack`, a `{ stack, site? }`, or a
+function returning one — the same place a project builds the stack for
+`eleventy.config.js`. `--site <handle>` overrides the config's site.
+
+### `check`
+
+Load + resolve, report structural problems, write and emit nothing. Safe against
+production data. It reports the faults an editing tool structurally cannot catch, because
+they are only defined relative to a build.
+
+- **Failures** (exit non-zero): path collisions; two sidecars scoped to the same site for
+  one record.
+- **Warnings**: dangling menu targets; a menu item setting both `url` and `recordId`, or
+  neither; a sidecar scoped to a site the record isn't published on; member records
+  belonging to no site.
+- **Info**: unlisted records built this run, with the mechanism (`unlistedAt` vs
+  `hidden`); or, under a non-owner credential, that they could not be seen at all.
+
+### `publish`
+
+Stamps `article.url` / `post.url` with the canonical location — `baseUrl` + the resolved
+permalink — for records that lack one. This is a write, so it is a separate command run
+deliberately after a good build, not part of it.
+
+- `url` absent → this site stamps it. First publish wins.
+- `url` present and prefixed by this site's `baseUrl` → this site is the canonical home,
+  nothing to do.
+- `url` present and pointing elsewhere → another site published it first; this site
+  renders `<link rel="canonical">` and does not restamp.
+
+`--dry-run` shows what it would stamp. Idempotent. Bookmarks and photos are skipped —
+their `url`, if any, isn't a canonical self-link.
+
+---
+
+## Access
+
+A build that renders unlisted records needs **owner-level access** to the stack:
+`includeUnlisted` is owner-only on `query()` and `subscribe()`, and no grant or
+delegation conveys it. A build under a scoped, non-owner credential still succeeds; it
+simply cannot see unlisted records, and every page that depends on one is missing from
+the output. `load` detects this and sets `unlistedVisible: false`; `check` reports it.
+
+**Sites are not a boundary.** Grants are type-level plus per-record; there is no
+association-scoped grant. A credential that can read `article@1` can read every article
+in the stack, not only the ones associated with the site it is building. For owner-run
+builds — the expected case — that is fine; if one site is ever built somewhere less
+trusted than another, splitting the stack is the answer, not splitting the site records.
+
+---
+
+## Non-goals
+
+- **Editing.** The Haverstack CLI is the editing tool. This plugin reads.
+- **Hosting.** Output is a directory. Where it goes is not this package's business.
+- **Orchestrating several builds.** One config builds one site; running two is a script,
+  and build order, partial failure and shared output directories belong to whoever
+  deploys.
+- **Being the only generator.** The types are generator-neutral by design; a Hugo or
+  Astro integration reading the same stack is the point of putting structure in records.
+
+## Deferred
+
+- **Incremental watch.** `--serve` rebuilds are full rebuilds. Content lives in the
+  stack, not on disk, so Eleventy's file watcher sees nothing; picking up stack changes
+  needs the change feed and a sentinel-file watch target.
+- **Curated collections.** `page-meta.order` and hand-ordered listings; v1 supports only
+  the commons query-based `collection` with keyword sort.

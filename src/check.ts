@@ -7,7 +7,7 @@
  * relative to a build: a slug collides only relative to a path, a sidecar
  * is misdirected only relative to which sites a record is published on.
  *
- * See eleventy-integration.md § What `check` reports.
+ * See docs/design.md § check.
  */
 
 import type { RecordFilter, StackClient, StackRecord } from '@haverstack/core';
