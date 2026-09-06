@@ -53,8 +53,12 @@ const SANITIZE: sanitizeHtml.IOptions = {
 const escapeHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** Rewrite `](filename)` / `](<filename>)` targets to their staged asset paths. */
-function substituteEmbeds(text: string, embeds: Map<string, string>): string {
+/**
+ * Rewrite `](filename)` / `](<filename>)` targets to their staged asset
+ * paths. Exposed so a site rendering the raw body itself gets image links
+ * that resolve.
+ */
+export function substituteEmbeds(text: string, embeds: Map<string, string>): string {
   let out = text;
   for (const [filename, assetPath] of embeds) {
     const literal = filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

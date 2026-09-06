@@ -19,6 +19,7 @@ import { pathToFileURL } from 'node:url';
 import type { Stack } from '@haverstack/core';
 import { checkExitCode, formatCheckReport, runCheck } from './check.js';
 import { formatPublishReport, runPublish } from './publish.js';
+import { formatEjectResult, runEject } from './scaffold.js';
 import type { SlugStrategy } from './resolve.js';
 
 const USAGE = `haverstack-eleventy <command> [options]
@@ -26,14 +27,17 @@ const USAGE = `haverstack-eleventy <command> [options]
 Commands:
   check      Load and resolve the site; report structural problems. Writes nothing.
   publish    Stamp canonical URLs on articles and posts that lack one.
+  eject      Write a starter haverstack-base layout into _includes for editing.
 
 Options:
-  --config <path>            Module providing the stack (default: ./haverstack.config.mjs).
-                             Default-exports a Stack, a { stack, site? }, or a function
-                             returning one.
+  --config <path>            check/publish: module providing the stack
+                             (default: ./haverstack.config.mjs). Default-exports a Stack,
+                             a { stack, site? }, or a function returning one.
   --site <handle>            Site to build. Overrides the config's default.
   --slug-strategy <s>        'title' (default) or 'recordId'.
   --dry-run                  publish: show what would be written, write nothing.
+  --includes-dir <path>      eject: where to write (default: _includes).
+  --force                    eject: overwrite existing files.
   -h, --help
 `;
 
@@ -69,6 +73,8 @@ async function main(): Promise<void> {
       site: { type: 'string' },
       'slug-strategy': { type: 'string' },
       'dry-run': { type: 'boolean' },
+      'includes-dir': { type: 'string' },
+      force: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -78,9 +84,16 @@ async function main(): Promise<void> {
     process.stdout.write(USAGE);
     process.exit(values.help ? 0 : 1);
   }
-  if (command !== 'check' && command !== 'publish') {
+  if (command !== 'check' && command !== 'publish' && command !== 'eject') {
     process.stderr.write(`Unknown command: ${command}\n\n${USAGE}`);
     process.exit(1);
+  }
+
+  if (command === 'eject') {
+    const dir = values['includes-dir'] ?? '_includes';
+    const result = await runEject(dir, { force: Boolean(values.force) });
+    process.stdout.write(`${formatEjectResult(result, dir)}\n`);
+    process.exit(0);
   }
 
   const strategy = values['slug-strategy'];

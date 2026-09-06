@@ -32,8 +32,12 @@ The plugin takes a `Stack`, not a URL — so a build can run against a remote se
 (`MemoryAdapter`, for tests). Whoever constructs the stack has already dealt with auth;
 the plugin never handles credentials and never writes.
 
-Out of the box it renders a legible site with its built-in templates. To use your own,
-map `template` names to layouts in your `_includes`:
+Out of the box it renders a legible site with its built-in templates. The pages are
+ordinary Eleventy pages: transforms and global data apply, and every listed page/member
+carries `tags` (`haverstack`, its type, its tag associations) and `eleventyNavigation`,
+so `collections.*`, navigation plugins, and anything reading `collections.all` see them.
+
+To use your own layouts, map `template` names to files in your `_includes`:
 
 ```js
 eleventyConfig.addPlugin(haverstack, {
@@ -44,9 +48,11 @@ eleventyConfig.addPlugin(haverstack, {
 ```
 
 A mapped page emits its content fragment (`{{ content }}`) plus `record`, `meta`, `url`,
-`collection`, and the `haverstack` globals; the layout does the rest and may chain to
-another. `base` catches any unmapped name; anything still unmapped keeps the built-in
-render.
+`canonical`, `body` / `bodyRaw`, `collection`, and the `haverstack` globals; the layout
+does the rest and may chain to another. `base` catches any unmapped name; anything still
+unmapped keeps the built-in render. `haverstack-eleventy eject` writes a starter
+`haverstack-base.njk` to get going. Other options: `eleventyCollections: false` for full
+isolation, `pageData: (ctx) => ({…})` to compute extra template data per record.
 
 ## Types
 
@@ -68,12 +74,13 @@ on every build; under a non-owner credential it tolerates types that already exi
 ```
 haverstack-eleventy check     load + resolve, report structural problems, write nothing
 haverstack-eleventy publish   stamp article.url / post.url with the canonical location
+haverstack-eleventy eject     write a starter haverstack-base layout into _includes
 ```
 
-Both read the stack from a config module (`--config`, default `./haverstack.config.mjs`)
-that default-exports a `Stack`, a `{ stack, site? }`, or a function returning one — the
-same place a project builds the stack for `eleventy.config.js`. `--site <handle>`
-overrides the config's site.
+`check` and `publish` read the stack from a config module (`--config`, default
+`./haverstack.config.mjs`) that default-exports a `Stack`, a `{ stack, site? }`, or a
+function returning one — the same place a project builds the stack for
+`eleventy.config.js`. `--site <handle>` overrides the config's site.
 
 `check` is read-only and safe against production data; it exits non-zero when it finds a
 build failure (a path collision, conflicting sidecars). `publish` writes — run it

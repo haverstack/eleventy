@@ -24,7 +24,12 @@ import type { Stack } from '@haverstack/core';
 import { defineEleventyTypes } from './types.js';
 import { load } from './load.js';
 import { resolve, type SlugStrategy } from './resolve.js';
-import { emit, type EmitEleventyConfig, type TemplateOverrides } from './emit.js';
+import {
+  emit,
+  type EmitEleventyConfig,
+  type PageDataHook,
+  type TemplateOverrides,
+} from './emit.js';
 
 export * from './types.js';
 export * from './errors.js';
@@ -37,6 +42,7 @@ export * from './templates.js';
 export * from './emit.js';
 export * from './check.js';
 export * from './publish.js';
+export * from './scaffold.js';
 
 const DEFAULT_ASSET_DIR = '_stack-assets';
 const DEFAULT_FEED_LIMIT = 20;
@@ -69,9 +75,26 @@ export interface HaverstackPluginOptions {
    * content fragment plus that `layout`; the layout receives `content`
    * plus `record`, `meta`, `url`, `collection`, and the `haverstack`
    * globals, and may chain to another layout. `base` catches every
-   * unmapped name; anything still unmapped uses the built-in render.
+   * unmapped name; anything still unmapped uses the built-in render. Run
+   * `haverstack-eleventy eject` for a starter `haverstack-base` layout.
    */
   templates?: TemplateOverrides;
+  /**
+   * `false` keeps the plugin's pages out of Eleventy's `collections` and
+   * `eleventyNavigation` — full isolation from the host's content graph.
+   * Default `true`: pages carry `tags` (`haverstack`, the record's type,
+   * its tag associations) and root-to-leaf `eleventyNavigation`, so
+   * `collections.*`, navigation plugins and anything reading
+   * `collections.all` see them. Unlisted records are excluded regardless.
+   */
+  eleventyCollections?: boolean;
+  /**
+   * Extra data merged into every page/member template, computed per
+   * record. Merged last, so it can override anything the plugin set —
+   * the substitute for directory data files, which virtual templates
+   * cannot have.
+   */
+  pageData?: PageDataHook;
 }
 
 /** The subset of Eleventy's config object this plugin uses. */
@@ -108,6 +131,8 @@ export async function haverstack(
     assetDir: options.assetDir ?? DEFAULT_ASSET_DIR,
     feedLimit: options.feedLimit ?? DEFAULT_FEED_LIMIT,
     templates: options.templates,
+    eleventyCollections: options.eleventyCollections,
+    pageData: options.pageData,
   });
 
   console.info(

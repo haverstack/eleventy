@@ -13,6 +13,7 @@ import {
   resolve,
   SITE_MEMBERSHIP_LABEL,
   type EmitEleventyConfig,
+  type EmitOptions,
 } from '../src/index.js';
 
 const PUBLIC: Permission[] = [{ access: 'public' }];
@@ -53,7 +54,11 @@ beforeEach(async () => {
   await defineEleventyTypes(stack);
 });
 
-async function runEmit(templates?: Record<string, string>) {
+type EmitExtra = Partial<
+  Pick<EmitOptions, 'templates' | 'eleventyCollections' | 'pageData' | 'feedLimit'>
+>;
+
+async function runEmit(extra: EmitExtra = {}) {
   const site = await stack.create(
     SITE.id,
     { title: 'T', baseUrl: 'https://ex.test', handle: 't' },
@@ -98,7 +103,7 @@ async function runEmit(templates?: Record<string, string>) {
     assetDir: '_stack-assets',
     feedLimit: 20,
     cwd,
-    templates,
+    ...extra,
   });
   return { config, result, resolved };
 }
@@ -144,7 +149,7 @@ describe('emit', () => {
   });
 
   test('a mapped template emits a content fragment plus the site layout', async () => {
-    const { config } = await runEmit({ home: 'my-home' });
+    const { config } = await runEmit({ templates: { home: 'my-home' } });
     const home = config.byPermalink('/')!;
     expect(home.data.layout).toBe('my-home');
     expect(home.content).not.toContain('<!doctype');
@@ -157,10 +162,68 @@ describe('emit', () => {
   });
 
   test('`base` catches every unmapped template, and listing pages carry their collection', async () => {
-    const { config } = await runEmit({ base: 'site-base' });
+    const { config } = await runEmit({ templates: { base: 'site-base' } });
     expect(config.byPermalink('/blog/live-one/')?.data.layout).toBe('site-base');
     const blog = config.byPermalink('/blog/')!;
     expect(blog.data.layout).toBe('site-base');
     expect((blog.data.collection as { members: unknown[] }).members).toHaveLength(1);
+  });
+});
+
+describe('emit — Eleventy graph integration', () => {
+  test('listed pages and members carry tags and are not excluded from collections', async () => {
+    const { config } = await runEmit();
+    const article = config.byPermalink('/blog/live-one/')!;
+    expect(article.data.tags).toEqual(['haverstack', 'article']);
+    expect(article.data.eleventyExcludeFromCollections).toBeUndefined();
+
+    const blog = config.byPermalink('/blog/')!;
+    expect(blog.data.tags).toEqual(['haverstack', 'page']);
+  });
+
+  test('unlisted records stay out of collections and navigation', async () => {
+    const { config } = await runEmit();
+    const old = config.byPermalink('/blog/old-one/')!;
+    expect(old.data.eleventyExcludeFromCollections).toBe(true);
+    expect(old.data.tags).toBeUndefined();
+    expect(old.data.eleventyNavigation).toBeUndefined();
+  });
+
+  test('pages get root-to-leaf eleventyNavigation', async () => {
+    const { config } = await runEmit();
+    const blog = config.byPermalink('/blog/')!;
+    const nav = blog.data.eleventyNavigation as { key: string; parent?: string; title: string };
+    expect(nav.title).toBe('Blog');
+    expect(nav.parent).toBeUndefined(); // root page
+    expect(nav.key).toBe((blog.data.record as { id: string }).id);
+  });
+
+  test('every page and member carries the raw and rendered body', async () => {
+    const { config } = await runEmit();
+    const home = config.byPermalink('/')!;
+    expect(home.data.bodyRaw).toBe('# hi');
+    expect(home.data.body).toContain('<h1>hi</h1>');
+  });
+
+  test('eleventyCollections: false isolates the plugin pages entirely', async () => {
+    const { config } = await runEmit({ eleventyCollections: false });
+    const article = config.byPermalink('/blog/live-one/')!;
+    expect(article.data.eleventyExcludeFromCollections).toBe(true);
+    expect(article.data.tags).toBeUndefined();
+    expect(config.byPermalink('/blog/')?.data.eleventyNavigation).toBeUndefined();
+  });
+
+  test('pageData merges last and can override plugin-set data', async () => {
+    const { config } = await runEmit({
+      pageData: (ctx) => ({
+        eleventyNavigation: { key: 'custom' },
+        seen: `${ctx.kind}:${ctx.template}`,
+      }),
+    });
+    const home = config.byPermalink('/')!;
+    expect(home.data.seen).toBe('page:home');
+    expect((home.data.eleventyNavigation as { key: string }).key).toBe('custom');
+    const article = config.byPermalink('/blog/live-one/')!;
+    expect(article.data.seen).toBe('member:article');
   });
 });

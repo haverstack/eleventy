@@ -10,7 +10,7 @@
  */
 
 import { resolve as resolvePath } from 'node:path';
-import type { StackClient } from '@haverstack/core';
+import type { RecordId, StackClient, StackRecord } from '@haverstack/core';
 import { collectAssets, stageAssets, type AssetPlan } from './assets.js';
 import { atomFeed, feedSpecs, sitemapXml } from './feeds.js';
 import {
@@ -20,9 +20,9 @@ import {
   renderPageFragment,
   type RenderContext,
 } from './templates.js';
-import { renderBody } from './markdown.js';
+import { renderBody, substituteEmbeds } from './markdown.js';
 import type { StackIndex } from './load.js';
-import type { ResolvedPage, ResolvedSite } from './resolve.js';
+import type { ResolvedMeta, ResolvedPage, ResolvedSite } from './resolve.js';
 
 /**
  * Maps a `template` name to a layout the site provides in its own
@@ -31,6 +31,20 @@ import type { ResolvedPage, ResolvedSite } from './resolve.js';
  * `base` is the fallback for any name not otherwise listed.
  */
 export type TemplateOverrides = { base?: string } & Record<string, string | undefined>;
+
+/** Passed to a `pageData` hook so it can compute extra template data per record. */
+export interface PageDataContext {
+  kind: 'page' | 'member';
+  record: StackRecord;
+  meta: ResolvedMeta;
+  url: string;
+  template: string;
+  canonical: string | null;
+  unlisted: boolean;
+  resolved: ResolvedSite;
+}
+
+export type PageDataHook = (ctx: PageDataContext) => Record<string, unknown>;
 
 export interface EmitEleventyConfig {
   addTemplate(virtualPath: string, content: string, data?: Record<string, unknown>): unknown;
@@ -50,6 +64,13 @@ export interface EmitOptions {
   cwd?: string;
   /** Per-template-name layout overrides. Unmapped names use the built-in render. */
   templates?: TemplateOverrides;
+  /**
+   * `false` keeps the plugin's pages out of Eleventy's `collections` and
+   * `eleventyNavigation` entirely. Default `true`.
+   */
+  eleventyCollections?: boolean;
+  /** Extra data merged into every page/member template, last (so it can override). */
+  pageData?: PageDataHook;
 }
 
 export interface EmitResult {
@@ -59,11 +80,26 @@ export interface EmitResult {
   assets: { written: number; skipped: number };
 }
 
-const flatten = (pages: ResolvedPage[]): ResolvedPage[] =>
-  pages.flatMap((page) => [page, ...flatten(page.children)]);
+interface FlatPage {
+  page: ResolvedPage;
+  parentId?: RecordId;
+}
 
-/** Data attached to every virtual template — usable by a site's own layouts. */
-const PASSTHROUGH_ENGINE = { templateEngineOverride: false, eleventyExcludeFromCollections: true };
+const flattenWithParent = (pages: ResolvedPage[], parentId?: RecordId): FlatPage[] =>
+  pages.flatMap((page) => [
+    { page, parentId },
+    ...flattenWithParent(page.children, page.record.id),
+  ]);
+
+/** Content is verbatim (already HTML); layouts and transforms still apply. */
+const CONTENT_VERBATIM = { templateEngineOverride: false } as const;
+/** Feeds and the sitemap are output, never content — keep them out of collections. */
+const OUTPUT_FILE = { ...CONTENT_VERBATIM, eleventyExcludeFromCollections: true } as const;
+
+const typeSlug = (typeId: string): string => typeId.split('@')[0].split('/').pop() ?? 'record';
+
+const tagAssociations = (record: StackRecord): string[] =>
+  (record.associations ?? []).flatMap((a) => (a.kind === 'tag' ? [a.label] : []));
 
 export async function emit(opts: EmitOptions): Promise<EmitResult> {
   const { eleventyConfig, stack, resolved, index, assetDir, feedLimit } = opts;
@@ -76,26 +112,25 @@ export async function emit(opts: EmitOptions): Promise<EmitResult> {
   );
   eleventyConfig.addPassthroughCopy(assets.assetDir);
 
-  const allPages = flatten(resolved.pages);
+  const flatPages = flattenWithParent(resolved.pages);
+
+  const rawBody = (record: StackRecord): string =>
+    substituteEmbeds(
+      String(record.content.text ?? ''),
+      assets.embedsByRecord.get(record.id) ?? new Map(),
+    );
 
   const bodyByRecord = new Map<string, string>();
-  for (const page of allPages) {
+  for (const record of [
+    ...flatPages.map((f) => f.page.record),
+    ...resolved.members.map((m) => m.record),
+  ]) {
     bodyByRecord.set(
-      page.record.id,
+      record.id,
       renderBody(
-        String(page.record.content.text ?? ''),
-        page.record.content.format,
-        assets.embedsByRecord.get(page.record.id),
-      ),
-    );
-  }
-  for (const member of resolved.members) {
-    bodyByRecord.set(
-      member.record.id,
-      renderBody(
-        String(member.record.content.text ?? ''),
-        member.record.content.format,
-        assets.embedsByRecord.get(member.record.id),
+        String(record.content.text ?? ''),
+        record.content.format,
+        assets.embedsByRecord.get(record.id),
       ),
     );
   }
@@ -104,44 +139,95 @@ export async function emit(opts: EmitOptions): Promise<EmitResult> {
   const ctx: RenderContext = { resolved, assets, feeds, bodyByRecord };
   const overrides = opts.templates;
   const layoutFor = (name: string): string | undefined => overrides?.[name] ?? overrides?.base;
+  const collectionsOn = opts.eleventyCollections !== false;
 
-  for (const page of allPages) {
+  /** Collection membership + the exclude flag for one record. */
+  const graphData = (record: StackRecord, unlisted: boolean): Record<string, unknown> => {
+    if (!collectionsOn || unlisted) return { eleventyExcludeFromCollections: true };
+    return { tags: ['haverstack', typeSlug(record.typeId), ...tagAssociations(record)] };
+  };
+
+  for (const { page, parentId } of flatPages) {
     const layout = layoutFor(page.template);
     const collection = resolved.collections.get(String(page.record.content.slug));
+    const nav =
+      collectionsOn && !page.unlisted
+        ? {
+            eleventyNavigation: {
+              key: page.record.id,
+              ...(parentId ? { parent: parentId } : {}),
+              title: page.record.content.title ?? page.record.content.slug,
+              ...(typeof page.meta.order === 'number' ? { order: page.meta.order } : {}),
+            },
+          }
+        : {};
+    const hookData =
+      opts.pageData?.({
+        kind: 'page',
+        record: page.record,
+        meta: page.meta,
+        url: page.url,
+        template: page.template,
+        canonical: null,
+        unlisted: page.unlisted,
+        resolved,
+      }) ?? {};
+
     eleventyConfig.addTemplate(
       `haverstack/page-${page.record.id}.html`,
       layout ? renderPageFragment(page, ctx) : renderPage(page, ctx),
       {
-        ...PASSTHROUGH_ENGINE,
+        ...CONTENT_VERBATIM,
+        ...graphData(page.record, page.unlisted),
+        ...nav,
         ...(layout ? { layout } : {}),
         permalink: page.url,
         title: page.record.content.title ?? null,
         record: page.record,
         meta: page.meta,
         url: page.url,
+        body: bodyByRecord.get(page.record.id) ?? '',
+        bodyRaw: rawBody(page.record),
         unlisted: page.unlisted,
         haverstackTemplate: page.template,
         ...(collection ? { collection } : {}),
+        ...hookData,
       },
     );
   }
 
   for (const member of resolved.members) {
     const layout = layoutFor(member.template);
+    const hookData =
+      opts.pageData?.({
+        kind: 'member',
+        record: member.record,
+        meta: member.meta,
+        url: member.url,
+        template: member.template,
+        canonical: member.canonical,
+        unlisted: member.unlisted,
+        resolved,
+      }) ?? {};
+
     eleventyConfig.addTemplate(
       `haverstack/member-${member.record.id}.html`,
       layout ? renderMemberFragment(member, ctx) : renderMember(member, ctx),
       {
-        ...PASSTHROUGH_ENGINE,
+        ...CONTENT_VERBATIM,
+        ...graphData(member.record, member.unlisted),
         ...(layout ? { layout } : {}),
         permalink: member.url,
         title: member.record.content.title ?? member.record.content.caption ?? null,
         record: member.record,
         meta: member.meta,
         url: member.url,
+        body: bodyByRecord.get(member.record.id) ?? '',
+        bodyRaw: rawBody(member.record),
         canonical: member.canonical,
         unlisted: member.unlisted,
         haverstackTemplate: member.template,
+        ...hookData,
       },
     );
   }
@@ -150,14 +236,14 @@ export async function emit(opts: EmitOptions): Promise<EmitResult> {
     eleventyConfig.addTemplate(
       `haverstack/feed-${spec.path.replace(/[^a-z0-9]+/gi, '-')}.html`,
       atomFeed(spec, resolved, feedLimit),
-      { ...PASSTHROUGH_ENGINE, permalink: spec.path },
+      { ...OUTPUT_FILE, permalink: spec.path },
     );
   }
 
   const sitemap = sitemapXml(resolved);
   if (sitemap) {
     eleventyConfig.addTemplate('haverstack/sitemap.html', sitemap, {
-      ...PASSTHROUGH_ENGINE,
+      ...OUTPUT_FILE,
       permalink: '/sitemap.xml',
     });
   }
@@ -173,7 +259,7 @@ export async function emit(opts: EmitOptions): Promise<EmitResult> {
   });
 
   return {
-    pages: allPages.length,
+    pages: flatPages.length,
     members: resolved.members.length,
     feeds: feeds.length,
     assets: staged,

@@ -171,9 +171,14 @@ staged path.
 
 - `addTemplate` per page and per member — this is what turns records into pages without
   files on disk. Drafts are not emitted; unlisted members are.
+- Each template's data carries `record`, `meta`, `url`, `canonical`, `unlisted`,
+  `haverstackTemplate`, `title`, `body` (rendered HTML), `bodyRaw` (embed-substituted
+  markdown), and, on listing roots, the resolved `collection`.
 - The feeds and the sitemap (below).
-- `haverstack` global data — `site`, `sites`, `owner`, `pages`, `menus`, `collections` —
-  so a site bringing its own templates can iterate them.
+- `haverstack` global data — `site`, `sites`, `owner`, `pages`, `menus`, `collections`.
+
+The plugin's virtual templates are ordinary Eleventy pages — see
+[Working with the Eleventy ecosystem](#working-with-the-eleventy-ecosystem).
 
 ## Markdown (`markdown.ts`)
 
@@ -193,23 +198,61 @@ record's `baseUrl`, so a single-site stack with no site record gets neither.
 
 ## Templates (`templates.ts`, `emit.ts`)
 
-Out of the box the plugin renders complete HTML documents with a small built-in set. The
-`templates` option maps a `template` name to a layout the site provides in its
-`_includes`; a mapped page emits its content fragment plus data (`record`, `meta`, `url`,
-`canonical`, `collection`, and the `haverstack` globals) and Eleventy renders it through
-the site's layout, which may chain to another. `base` catches any unmapped name; anything
-still unmapped keeps the built-in render, so doing nothing still builds a site. For a
-mapped listing the fragment is just the intro body — the layout builds the member list
-from `collection`.
+Three levels, in order of how much the site takes over:
+
+1. **Nothing.** The plugin renders complete HTML documents with a small built-in set
+   (`documentShell` + per-shape fragments). A stack builds a legible site with no
+   template work.
+2. **`templates: { base: 'haverstack-base', … }`.** Maps a `template` name to a layout
+   in the site's `_includes`. A mapped page emits its content _fragment_ — `body` for
+   listings, `<article>` for the rest — plus all its data, and Eleventy renders it
+   through the layout, which may chain to another. `base` is the catch-all; anything
+   still unmapped keeps the built-in render. `haverstack-eleventy eject` writes a
+   starter `haverstack-base.njk` (nav, footer, `{{ content }}`, and a listing block) to
+   `_includes` for editing — the build never writes there itself.
+3. **`templates` for every name + your own layouts.** Full control; the plugin is just
+   the data source.
+
+## Working with the Eleventy ecosystem
+
+`addTemplate` produces real templates, so most of Eleventy already applies to the
+plugin's pages:
+
+- **Transforms** run on the output — minifiers, PostCSS, Pagefind, image post-processing.
+- **Global data** (`_data/*.js`) applies.
+- **Filters, shortcodes, `{% include %}`, layout chaining** are available in any mapped
+  layout.
+- **Collections.** Every listed page and member carries `tags` — `haverstack`, the
+  record's type (`article`, `page`, …), and its tag associations — so `collections.all`,
+  `collections.article`, tag archives, and any plugin that reads collections (RSS,
+  sitemap, related-posts) see them. Unlisted records are excluded. `eleventyCollections:
+false` opts out entirely.
+- **Navigation.** Pages carry root-to-leaf `eleventyNavigation` (`key`, `parent`,
+  `title`, `order`), so `@11ty/eleventy-navigation` works without configuration.
+- **The data cascade.** Virtual pages have no directory, so directory data files and
+  `eleventyComputed` can't target them. The `pageData` hook — `(ctx) => object`, merged
+  last — is the substitute.
+
+What stays out of reach: `--serve` rebuilds are full rebuilds (content is in the stack,
+not in files Eleventy can watch — see [Deferred](#deferred)), and shortcodes inside a
+record's markdown body aren't evaluated (bodies are content, not templates; a layout
+that wants them renders `bodyRaw` through its own pipeline).
 
 ---
 
 ## Commands
 
-The `haverstack-eleventy` CLI reads the stack from a config module (`--config`, default
-`./haverstack.config.mjs`) that default-exports a `Stack`, a `{ stack, site? }`, or a
-function returning one — the same place a project builds the stack for
-`eleventy.config.js`. `--site <handle>` overrides the config's site.
+The `haverstack-eleventy` CLI. `check` and `publish` read the stack from a config module
+(`--config`, default `./haverstack.config.mjs`) that default-exports a `Stack`, a
+`{ stack, site? }`, or a function returning one — the same place a project builds the
+stack for `eleventy.config.js`. `--site <handle>` overrides the config's site.
+
+### `eject`
+
+Writes a starter `haverstack-base.njk` layout into `_includes` (`--includes-dir` to
+change, `--force` to overwrite) so the whole build can flow through an editable Eleventy
+layout. Needs no stack. This is the only thing in the package that writes to the site's
+source, and it never happens as a build side effect.
 
 ### `check`
 
