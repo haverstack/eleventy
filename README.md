@@ -1,1 +1,52 @@
-# eleventy
+# `@haverstack/eleventy`
+
+An Eleventy plugin that builds a static site from a [Haverstack](https://github.com/haverstack/core)
+stack. Records are the content source; there are no content files on disk.
+
+> **Status:** Early development. Type registration is in place; load, resolve, asset
+> staging, emit, and the `check` / `publish` commands are being built out. See
+> [`eleventy-integration.md`](../eleventy-integration.md) and
+> [`site-generator-types.md`](../site-generator-types.md) for the design.
+
+## Usage
+
+```js
+import { haverstack } from '@haverstack/eleventy';
+import { LocalAdapter } from '@haverstack/adapter-local';
+import { Stack } from '@haverstack/core';
+
+export default async function (eleventyConfig) {
+  const stack = await Stack.create(await LocalAdapter.open({ path: './stack.db' }));
+
+  eleventyConfig.addPlugin(haverstack, {
+    stack,
+    site: 'personal',
+    assetDir: '_stack-assets',
+    slugStrategy: 'title',
+  });
+}
+```
+
+The plugin takes a `Stack`, not a URL — so a build can run against a remote server
+(`APIAdapter`), a local SQLite file (`LocalAdapter`), or an in-memory stack
+(`MemoryAdapter`, for tests). Whoever constructs the stack has already dealt with auth;
+the plugin never handles credentials and never writes.
+
+## Types
+
+**Consumes** the commons publishing types — `site@1`, `page@1`, `article@1`, `post@1`,
+`photo@1`, `bookmark@1` — plus `_entity@1` and `_attachment@1`.
+
+**Owns** two sidecar types, minted under `org.haverstack.eleventy`:
+
+| Type                                  | Role                                                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `org.haverstack.eleventy/page-meta@1` | Per-record, per-site overrides: `slug`, `template`, `order`, `hidden`, `draft`. Every field optional. |
+| `org.haverstack.eleventy/menu@1`      | A named, ordered navigation menu belonging to one site.                                               |
+
+`defineEleventyTypes(stack)` registers the whole set. It is idempotent and safe to call
+on every build; under a non-owner credential it tolerates types that already exist.
+
+## License
+
+[MIT](./LICENSE)
