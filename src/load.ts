@@ -65,7 +65,11 @@ export interface StackIndex {
   /** Every `site@1` record, for cross-site link resolution. */
   sitesById: Map<RecordId, StackRecord>;
   sitesByHandle: Map<string, StackRecord>;
-  /** Every record this phase fetched, by id — pages of every site included. */
+  /**
+   * Every record this phase fetched, by id: every site's pages, all menus,
+   * sidecars, attachment metadata, the owner, and the listing members that
+   * carry a sidecar. Every key of `sidecarsByParent` resolves here.
+   */
   byId: Map<RecordId, StackRecord>;
   /** Root pages of the site being built, sorted stably. */
   pageRoots: PageNode[];
@@ -280,6 +284,15 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
     byId.set(record.id, record);
   }
   if (owner) byId.set(owner.id, owner);
+
+  // The records sidecars describe — listing members carrying page-meta —
+  // are not bulk-fetched here (resolve's collection queries bring them in).
+  // Point-read the few that carry a sidecar so every key in
+  // `sidecarsByParent` resolves through `byId`: `check` names them, and a
+  // scoped read that returns null just leaves the gap it would have anyway.
+  const describedIds = [...sidecarsByParent.keys()].filter((id) => !byId.has(id));
+  const described = await Promise.all(describedIds.map((id) => stack.get(id)));
+  for (const record of described) if (record) byId.set(record.id, record);
 
   return {
     site,

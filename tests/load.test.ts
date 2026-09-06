@@ -187,6 +187,16 @@ describe('load — indexes', () => {
     expect(setPro?.thisSite[0].content.slug).toBe('shared-pro');
   });
 
+  test('every sidecar parent resolves through byId, even an unfetched member', async () => {
+    const { shared } = await twoSites();
+    const index = await load(stack, { site: 'personal' });
+    // `shared` is an article — never bulk-fetched by load — but it carries a sidecar.
+    expect(index.byId.get(shared.id)?.content.title).toBe('Shared');
+    for (const parentId of index.sidecarsByParent.keys()) {
+      expect(index.byId.has(parentId), parentId).toBe(true);
+    }
+  });
+
   test('filters menus to the named site and groups by handle', async () => {
     const { personal } = await twoSites();
     const index = await load(stack, { site: 'personal' });
