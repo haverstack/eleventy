@@ -35,6 +35,8 @@ export * from './markdown.js';
 export * from './feeds.js';
 export * from './templates.js';
 export * from './emit.js';
+export * from './check.js';
+export * from './publish.js';
 
 const DEFAULT_ASSET_DIR = '_stack-assets';
 const DEFAULT_FEED_LIMIT = 20;

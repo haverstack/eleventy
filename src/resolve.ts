@@ -31,6 +31,21 @@ export type SlugStrategy = 'title' | 'recordId' | ((record: StackRecord) => stri
 
 export interface ResolveConfig {
   slugStrategy: SlugStrategy;
+  /**
+   * `true` (default): throw `HaverstackEleventyError` listing every fatal
+   * fault. `false`: collect them in `ResolvedSite.errors` and resolve
+   * best-effort — what the `check` command uses to report them all.
+   */
+  strict?: boolean;
+}
+
+/** A fault that fails a build: conflicting sidecars, or a path two records share. */
+export interface ResolveError {
+  kind: 'sidecar-conflict' | 'path-collision';
+  message: string;
+  recordIds: RecordId[];
+  /** Present on a collision. */
+  path?: string;
 }
 
 /** The sidecar cascade's result for one record — never a raw sidecar. */
@@ -110,6 +125,8 @@ export interface ResolvedSite {
   collections: Map<string, ResolvedCollection>;
   /** By handle. */
   menus: Map<string, ResolvedMenu>;
+  /** Fatal faults, collected rather than thrown when `strict` is `false`. */
+  errors: ResolveError[];
   warnings: ResolveWarning[];
 }
 
@@ -165,22 +182,33 @@ function pickMeta(record: StackRecord | undefined): ResolvedMeta {
   return meta;
 }
 
-function assertAtMostOne(list: StackRecord[], recordId: RecordId, scope: string): void {
-  if (list.length > 1) {
-    throw new HaverstackEleventyError(
-      `Record ${recordId} has ${list.length} page-meta sidecars ${scope} ` +
-        `(${list.map((r) => r.id).join(', ')}). Picking one silently produces a site that ` +
-        `differs between runs — remove the extra.`,
-    );
-  }
-}
+/** Collects sidecar-cascade errors; returns the merged meta best-effort (first of each scope). */
+class MetaResolver {
+  readonly errors: ResolveError[] = [];
+  private readonly reported = new Set<RecordId>();
+  constructor(private readonly index: StackIndex) {}
 
-function resolveMeta(index: StackIndex, recordId: RecordId): ResolvedMeta {
-  const set: SidecarSet | undefined = index.sidecarsByParent.get(recordId);
-  if (!set) return {};
-  assertAtMostOne(set.unscoped, recordId, 'with no for-site scope');
-  assertAtMostOne(set.thisSite, recordId, 'scoped to this site');
-  return { ...pickMeta(set.unscoped[0]), ...pickMeta(set.thisSite[0]) };
+  resolve(recordId: RecordId): ResolvedMeta {
+    const set: SidecarSet | undefined = this.index.sidecarsByParent.get(recordId);
+    if (!set) return {};
+    for (const [list, scope] of [
+      [set.unscoped, 'with no for-site scope'],
+      [set.thisSite, 'scoped to this site'],
+    ] as const) {
+      if (list.length > 1 && !this.reported.has(recordId)) {
+        this.reported.add(recordId);
+        this.errors.push({
+          kind: 'sidecar-conflict',
+          recordIds: [recordId, ...list.map((r) => r.id)],
+          message:
+            `Record ${recordId} has ${list.length} page-meta sidecars ${scope} ` +
+            `(${list.map((r) => r.id).join(', ')}). Picking one silently produces a site that ` +
+            `differs between runs — remove the extra.`,
+        });
+      }
+    }
+    return { ...pickMeta(set.unscoped[0]), ...pickMeta(set.thisSite[0]) };
+  }
 }
 
 function isDraft(record: StackRecord, meta: ResolvedMeta): boolean {
@@ -294,12 +322,13 @@ function siteMembership(record: StackRecord): RecordId[] {
 export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite {
   const { site } = index;
   const warnings: ResolveWarning[] = [];
+  const metaResolver = new MetaResolver(index);
 
   // 1. Pages — recurse the tree, dropping draft subtrees.
   const pagesById = new Map<RecordId, ResolvedPage>();
   const pages: ResolvedPage[] = [];
   const walk = (node: PageNode, parent: ResolvedPage | null): void => {
-    const meta = resolveMeta(index, node.record.id);
+    const meta = metaResolver.resolve(node.record.id);
     if (isDraft(node.record, meta)) {
       if (node.children.length > 0) {
         warnings.push({
@@ -335,7 +364,7 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
       CollectionSpec | undefined;
     const listed: ResolvedMember[] = [];
     for (const candidate of candidates) {
-      const meta = resolveMeta(index, candidate.id);
+      const meta = metaResolver.resolve(candidate.id);
       if (isDraft(candidate, meta)) continue; // not built at all
       let member = membersById.get(candidate.id);
       if (!member) {
@@ -372,23 +401,19 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
       explicit: member.slugExplicit,
     });
   }
-  const collisions = [...byUrl.entries()].filter(([, entries]) => entries.length > 1);
-  if (collisions.length > 0) {
-    const where = site ? `site "${site.content.handle as string}"` : 'the site';
-    const detail = collisions
-      .map(
-        ([url, entries]) =>
-          `  ${url}\n` +
-          entries
-            .map(
-              (e) => `    - ${e.recordId} (${e.kind}, slug ${e.explicit ? 'explicit' : 'derived'})`,
-            )
-            .join('\n'),
-      )
-      .join('\n');
-    throw new HaverstackEleventyError(
-      `Path collision${collisions.length > 1 ? 's' : ''} on ${where}:\n${detail}`,
-    );
+  const errors: ResolveError[] = [...metaResolver.errors];
+  for (const [url, entries] of byUrl) {
+    if (entries.length < 2) continue;
+    errors.push({
+      kind: 'path-collision',
+      path: url,
+      recordIds: entries.map((e) => e.recordId),
+      message:
+        `Path collision at ${url}:\n` +
+        entries
+          .map((e) => `  - ${e.recordId} (${e.kind}, slug ${e.explicit ? 'explicit' : 'derived'})`)
+          .join('\n'),
+    });
   }
 
   // 4. Menus — resolve every recordId to a URL.
@@ -490,6 +515,14 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
   const pagesByUrl = new Map<string, ResolvedPage>();
   for (const page of pagesById.values()) pagesByUrl.set(page.url, page);
 
+  if (config.strict !== false && errors.length > 0) {
+    const where = site ? `site "${site.content.handle as string}"` : 'the site';
+    throw new HaverstackEleventyError(
+      `${errors.length} fatal fault${errors.length > 1 ? 's' : ''} resolving ${where}:\n\n` +
+        errors.map((e) => e.message).join('\n\n'),
+    );
+  }
+
   return {
     site,
     sites: index.sitesByHandle,
@@ -499,6 +532,7 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
     members: [...membersById.values()],
     collections,
     menus,
+    errors,
     warnings,
   };
 }

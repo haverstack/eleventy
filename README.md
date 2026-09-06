@@ -4,10 +4,10 @@ An Eleventy plugin that builds a static site from a [Haverstack](https://github.
 stack. Records are the content source; there are no content files on disk.
 
 > **Status:** Early development. The build pipeline works end to end — load, resolve,
-> asset staging, markdown, and emit (pages, collections, feeds, sitemap, built-in
-> templates). Still to come: overriding the built-in templates with a site's own, and the
-> `check` / `publish` commands. See [`eleventy-integration.md`](../eleventy-integration.md)
-> and [`site-generator-types.md`](../site-generator-types.md) for the design.
+> asset staging, markdown, emit (pages, collections, feeds, sitemap, built-in templates),
+> and the `check` / `publish` commands. Still to come: overriding the built-in templates
+> with a site's own. See [`eleventy-integration.md`](../eleventy-integration.md) and
+> [`site-generator-types.md`](../site-generator-types.md) for the design.
 
 ## Usage
 
@@ -47,6 +47,22 @@ the plugin never handles credentials and never writes.
 
 `defineEleventyTypes(stack)` registers the whole set. It is idempotent and safe to call
 on every build; under a non-owner credential it tolerates types that already exist.
+
+## Commands
+
+```
+haverstack-eleventy check     load + resolve, report structural problems, write nothing
+haverstack-eleventy publish   stamp article.url / post.url with the canonical location
+```
+
+Both read the stack from a config module (`--config`, default `./haverstack.config.mjs`)
+that default-exports a `Stack`, a `{ stack, site? }`, or a function returning one — the
+same place a project builds the stack for `eleventy.config.js`. `--site <handle>`
+overrides the config's site.
+
+`check` is read-only and safe against production data; it exits non-zero when it finds a
+build failure (a path collision, conflicting sidecars). `publish` writes — run it
+deliberately after a good build; `--dry-run` shows what it would stamp.
 
 ## License
 
