@@ -29,8 +29,15 @@ import {
   type StackRecord,
 } from '@haverstack/core';
 import { PAGE, SITE } from '@haverstack/commons';
-import { FOR_SITE_LABEL, MENU, PAGE_META } from './types.js';
+import { FOR_SITE_LABEL, MENU, PAGE_META, SITE_MEMBERSHIP_LABEL } from './types.js';
 import { HaverstackEleventyError } from './errors.js';
+
+/** The `collection` object a listing-root `page@1` carries. */
+export interface CollectionSpec {
+  typeId: string;
+  tag?: string;
+  order?: string;
+}
 
 const QUERY_PAGE_SIZE = 100;
 
@@ -77,6 +84,13 @@ export interface StackIndex {
   pagesById: Map<RecordId, PageNode>;
   /** `page-meta` sidecars grouped by the record they describe. */
   sidecarsByParent: Map<RecordId, SidecarSet>;
+  /**
+   * Raw collection candidates per listing-root page id: every record the
+   * root's `collection` query selects, scoped to this site and unlisted
+   * included, in query order. Draft/hidden filtering, sorting and
+   * permalinks are resolve's.
+   */
+  membersByListingRoot: Map<RecordId, StackRecord[]>;
   /** The site's menus, in fetch order. */
   menus: StackRecord[];
   /** The site's menus grouped by handle (one-to-many: uniqueness is unenforced). */
@@ -252,6 +266,30 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
 
   const sidecarsByParent = groupSidecars(allSidecars, site?.id);
 
+  // Collection candidates: run each listing root's query, scoped to this
+  // site by a `relatedTo` clause (omitted on a single-site stack). This is
+  // the query construction — mechanical; the draft convention, sort and
+  // permalinks that turn candidates into a listing are resolve's.
+  const membersByListingRoot = new Map<RecordId, StackRecord[]>();
+  for (const node of pagesById.values()) {
+    const spec = node.record.content.collection as CollectionSpec | undefined;
+    if (!spec?.typeId) continue;
+    const members = await queryAll(stack, {
+      typeId: spec.typeId,
+      ...(spec.tag ? { tags: [spec.tag] } : {}),
+      ...(site
+        ? {
+            relatedTo: {
+              label: SITE_MEMBERSHIP_LABEL,
+              target: { scope: 'record', recordId: site.id },
+            },
+          }
+        : {}),
+      ...unlisted,
+    });
+    membersByListingRoot.set(node.record.id, members);
+  }
+
   const menusByHandle = new Map<string, StackRecord[]>();
   for (const menu of allMenus) {
     const handle = menu.content.handle;
@@ -280,6 +318,7 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
     ...allMenus,
     ...allSidecars,
     ...allAttachments,
+    ...[...membersByListingRoot.values()].flat(),
   ]) {
     byId.set(record.id, record);
   }
@@ -302,6 +341,7 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
     pageRoots,
     pagesById,
     sidecarsByParent,
+    membersByListingRoot,
     menus: allMenus,
     menusByHandle,
     attachmentsByFileId,

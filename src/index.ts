@@ -20,21 +20,15 @@
  * and emit land next.
  */
 
-import type { Stack, StackRecord } from '@haverstack/core';
+import type { Stack } from '@haverstack/core';
 import { defineEleventyTypes } from './types.js';
 import { load } from './load.js';
+import { resolve, type SlugStrategy } from './resolve.js';
 
 export * from './types.js';
 export * from './errors.js';
 export * from './load.js';
-
-/**
- * How this site derives a permalink for a listing member when no sidecar
- * overrides it. `'title'` slugifies the record's `title` (default);
- * `'recordId'` publishes under the opaque record ID; a function lets the
- * site decide. See eleventy-integration.md § slugStrategy.
- */
-export type SlugStrategy = 'title' | 'recordId' | ((record: StackRecord) => string);
+export * from './resolve.js';
 
 export interface HaverstackPluginOptions {
   /**
@@ -76,17 +70,20 @@ export async function haverstack(
   await defineEleventyTypes(options.stack);
 
   const index = await load(options.stack, { site: options.site });
+  const resolved = resolve(index, { slugStrategy: options.slugStrategy ?? 'title' });
 
-  const name = index.site ? `"${index.site.content.title as string}"` : 'the single site';
+  const name = resolved.site ? `"${resolved.site.content.title as string}"` : 'the single site';
   const unlisted = index.unlistedVisible
     ? ''
-    : ' (unlisted records not visible under this credential)';
+    : ' — unlisted records not visible under this credential';
   console.info(
-    `[haverstack] loaded ${name}: ${index.pagesById.size} pages, ${index.menus.length} menus, ` +
-      `${index.attachmentsByFileId.size} attachment files${unlisted}`,
+    `[haverstack] resolved ${name}: ${resolved.pagesByUrl.size} pages, ${resolved.members.length} members, ` +
+      `${resolved.collections.size} collections, ${resolved.menus.size} menus, ` +
+      `${resolved.warnings.length} warning(s)${unlisted}`,
   );
+  for (const w of resolved.warnings) console.warn(`[haverstack]   ! ${w.message}`);
 
-  // Resolve, stage assets, emit — attach here.
+  // Stage assets, emit — attach here.
 }
 
 export default haverstack;
