@@ -3,5 +3,5 @@ allowBuilds:
 # @haverstack/* publish frequently enough to land inside a minimumReleaseAge
 # supply-chain policy window; excluded so a fresh release still installs.
 minimumReleaseAgeExclude:
-  - '@haverstack/commons@0.20.0'
-  - '@haverstack/core@0.26.0'
+  - '@haverstack/commons@0.21.0'
+  - '@haverstack/core@0.27.0'

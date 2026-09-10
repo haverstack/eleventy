@@ -9,8 +9,8 @@
  * Two disciplines this phase enforces (see docs/design.md § Load):
  *
  *   - Every query loops on the cursor to exhaustion. `cursor === null` is
- *     the only end-of-results signal; a short or empty page is not. `total`
- *     is `null` under a scoped stack, so there is no count to check.
+ *     the only end-of-results signal; a short or empty page is not. A query
+ *     result carries no count, so there is nothing else to check.
  *   - Every query asks for unlisted records. They still build at their
  *     URLs, so the build must see them; excluding them from listings is
  *     resolve's job. `includeUnlisted` is owner-only, so a build under a
