@@ -134,8 +134,8 @@ first), the owner `_entity@1`, and the raw collection candidates per listing roo
 Two disciplines this phase enforces:
 
 - **Every query loops the cursor to exhaustion.** `cursor === null` is the only
-  end-of-results signal — a short or empty page is not. `total` is `null` under a
-  permission-scoped query, so there is no count to check against.
+  end-of-results signal — a short or empty page is not. A query result carries no
+  count, so there is nothing else to check against.
 - **Every query passes `includeUnlisted: true`.** Unlisted records still build at their
   URLs, so the build must see them; excluding them from listings is resolve's job.
   `includeUnlisted` is owner-only, so a build under a scoped credential loses them —
@@ -351,7 +351,7 @@ Things that make this subtle:
 - **Hard deletes (purges) are not caught** — nothing is left to query. Soft deletes show
   with `includeDeleted: true`; for purges, diff the persisted permalink set against what
   now resolves, or accept that a purge needs a manual full rebuild.
-- `total` is `null` under a scoped credential, so the gate query obeys the same
+- A query result carries no count, so the gate query obeys the same
   cursor-to-exhaustion rule as the load phase.
 
 ### A watching `--serve` (needs a stack server)
