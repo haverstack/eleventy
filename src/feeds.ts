@@ -12,23 +12,13 @@
 
 import type { StackRecord } from '@haverstack/core';
 import type { ResolvedCollection, ResolvedMember, ResolvedPage, ResolvedSite } from './resolve.js';
+import { stripTrailingSlashes } from './url.js';
 
 const xmlEscape = (s: string): string =>
   s.replace(
     /[<>&'"]/g,
     (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c] as string,
   );
-
-/**
- * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
- * unanchored start is quadratic on adversarial input (many slashes
- * followed by a non-slash), and `baseUrl` comes from record content.
- */
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
-  return s.slice(0, end);
-}
 
 const absolute = (baseUrl: string, path: string): string =>
   `${stripTrailingSlashes(baseUrl)}${path.startsWith('/') ? path : `/${path}`}`;

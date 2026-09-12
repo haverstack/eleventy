@@ -20,6 +20,7 @@ import { ARTICLE, BOOKMARK, PAGE, PHOTO, POST } from '@haverstack/commons';
 import { SITE_MEMBERSHIP_LABEL } from './types.js';
 import { HaverstackEleventyError } from './errors.js';
 import type { CollectionSpec, PageNode, SidecarSet, StackIndex } from './load.js';
+import { stripTrailingSlashes } from './url.js';
 
 /**
  * How this site derives a permalink for a listing member when no sidecar
@@ -135,17 +136,6 @@ export interface ResolvedSite {
 // -------------------------------------------------------
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
-
-/**
- * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
- * unanchored start is quadratic on adversarial input (many slashes
- * followed by a non-slash), and `baseUrl` comes from record content.
- */
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
-  return s.slice(0, end);
-}
 
 const MEMBER_TEMPLATE: Record<string, string> = {
   [baseId(ARTICLE.id)]: 'article',

@@ -13,19 +13,9 @@ import { PHOTO } from '@haverstack/commons';
 import type { AssetPlan } from './assets.js';
 import type { FeedSpec } from './feeds.js';
 import type { ResolvedMember, ResolvedMenu, ResolvedPage, ResolvedSite } from './resolve.js';
+import { stripTrailingSlashes } from './url.js';
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
-
-/**
- * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
- * unanchored start is quadratic on adversarial input (many slashes
- * followed by a non-slash), and `baseUrl` comes from record content.
- */
-function stripTrailingSlashes(s: string): string {
-  let end = s.length;
-  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
-  return s.slice(0, end);
-}
 
 const esc = (s: unknown): string =>
   String(s ?? '')
