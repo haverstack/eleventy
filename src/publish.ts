@@ -83,7 +83,7 @@ export async function runPublish(stack: Stack, opts: PublishOptions = {}): Promi
       continue;
     }
     const url = `${baseUrl}${member.url}`;
-    if (!opts.dryRun) await stack.update(member.record.id, { url });
+    if (!opts.dryRun) await stack.patchContent(member.record.id, { url });
     report.stamped.push({ recordId: member.record.id, url });
   }
 

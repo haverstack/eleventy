@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@haverstack/commons':
-        specifier: ^0.21.0
-        version: 0.21.0
+        specifier: ^0.25.0
+        version: 0.25.0
       '@haverstack/core':
-        specifier: ^0.27.0
-        version: 0.27.0
+        specifier: ^0.31.0
+        version: 0.31.0
       markdown-it:
         specifier: ^15.0.1
         version: 15.0.1
@@ -359,11 +359,11 @@ packages:
     resolution: {integrity: sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@haverstack/commons@0.21.0':
-    resolution: {integrity: sha512-DXFOXtGyWR6RSrFKDXy8A4c9bESCcKEwujjgyn7i/72/S1WJFUb9DyqpzHWjAJokR+1wHWxsaEKU0IdU0/2x3A==}
+  '@haverstack/commons@0.25.0':
+    resolution: {integrity: sha512-1MwoTPcaEuOv75bm8dbYWg/PVHI4oABpmTVZ6XpervUGyYJLDuLDW5pRgz2/LsGJZM5NHRBNQyca52d99zgPcA==}
 
-  '@haverstack/core@0.27.0':
-    resolution: {integrity: sha512-++qnrnmgCAIA6vvUiwkTC8OifurCIC9/klQoQW9vfHNEujh03XAFiAuPm6doNvKYpP4zTanZGNHdkoyiSJgKGQ==}
+  '@haverstack/core@0.31.0':
+    resolution: {integrity: sha512-r/cCuTE+39oEJ7ib6gLc2yoMrK2+9QfVWDX2QhdlG77msxZDLjijcx6djNrDbaZRUo1heCIDpgJunSUhjOVG+Q==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2008,11 +2008,11 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@haverstack/commons@0.21.0':
+  '@haverstack/commons@0.25.0':
     dependencies:
-      '@haverstack/core': 0.27.0
+      '@haverstack/core': 0.31.0
 
-  '@haverstack/core@0.27.0': {}
+  '@haverstack/core@0.31.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

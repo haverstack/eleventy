@@ -78,7 +78,7 @@ describe('sidecar type definitions', () => {
     expect(MENU.schema.handle).toEqual({ kind: 'string', required: true });
     const items = MENU.schema.items;
     expect(items.kind).toBe('array');
-    if (items.kind !== 'array') throw new Error('unreachable');
+    if (items.kind !== 'array' || !items.items) throw new Error('unreachable');
     expect(items.items.kind).toBe('object');
   });
 });
