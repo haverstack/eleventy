@@ -1,5 +1,27 @@
 # @haverstack/eleventy
 
+## 0.2.1
+
+### Patch Changes
+
+- [#1](https://github.com/haverstack/eleventy/pull/1) [`c020531`](https://github.com/haverstack/eleventy/commit/c02053109d127b54a8c9a5870776fb4b340ead87) Thanks [@cuibonobo](https://github.com/cuibonobo)! - Bump `@haverstack/core` to `^0.27.0` and `@haverstack/commons` to `^0.21.0`.
+
+  Core 0.27.0 removes `total` from `QueryResult`. The load and check phases
+  never read it — every query already loops the cursor to exhaustion — so
+  this is a dependency bump only; the stale doc comments that mentioned
+  `total` have been reworded.
+
+- [`936e582`](https://github.com/haverstack/eleventy/commit/936e5824c0c101ed1dcd411fed4beb8f348c90db) Thanks [@cuibonobo](https://github.com/cuibonobo)! - Bump `@haverstack/core` to `^0.31.0` and `@haverstack/commons` to `^0.25.0`.
+
+  Core 0.29.0 replaced `update()` with `mutate()`/`patchContent()`; `publish.ts`'s
+  single write (stamping `article.url` / `post.url`) now calls `patchContent()`.
+  No other core or commons change between 0.27 and 0.31 touches surface the
+  plugin reads or writes — `total` was already unused, native-field verbs
+  (`setPermissions`/`setUnlisted`/`setParent`) were never called directly, and
+  the stricter open-container schema rule (0.29) requires no schema change
+  since every `object`/`array` field this package declares already states its
+  interior.
+
 ## 0.2.0
 
 ### Minor Changes
