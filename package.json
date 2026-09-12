@@ -1,6 +1,6 @@
 {
   "name": "@haverstack/eleventy",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Eleventy plugin that builds a static site from a Haverstack stack — records are the content source, no content files on disk",
   "type": "module",
   "exports": {
