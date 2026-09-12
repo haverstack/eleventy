@@ -136,6 +136,17 @@ export interface ResolvedSite {
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
 
+/**
+ * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
+ * unanchored start is quadratic on adversarial input (many slashes
+ * followed by a non-slash), and `baseUrl` comes from record content.
+ */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return s.slice(0, end);
+}
+
 const MEMBER_TEMPLATE: Record<string, string> = {
   [baseId(ARTICLE.id)]: 'article',
   [baseId(POST.id)]: 'post',
@@ -277,7 +288,7 @@ const memberTemplate = (record: StackRecord, meta: ResolvedMeta): string =>
 function memberCanonical(record: StackRecord, site: StackRecord | null): string | null {
   const url = record.content.url;
   if (typeof url !== 'string' || !url || !site) return null;
-  const base = String(site.content.baseUrl ?? '').replace(/\/+$/, '');
+  const base = stripTrailingSlashes(String(site.content.baseUrl ?? ''));
   return base && url.startsWith(base) ? null : url;
 }
 
@@ -430,7 +441,7 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
       const { path, siteId } = rawPagePath(index, recordId);
       const target = siteId ? index.sitesById.get(siteId) : undefined;
       if (target && target.id !== site?.id) {
-        return `${String(target.content.baseUrl ?? '').replace(/\/+$/, '')}${path}`;
+        return `${stripTrailingSlashes(String(target.content.baseUrl ?? ''))}${path}`;
       }
       return path;
     }
@@ -446,7 +457,7 @@ export function resolve(index: StackIndex, config: ResolveConfig): ResolvedSite 
         recordId,
         message: `Menu link to ${recordId} on site "${target.content.handle as string}" resolves only to that site's root; cross-site member permalinks are not derivable here.`,
       });
-      return `${String(target.content.baseUrl ?? '').replace(/\/+$/, '')}/`;
+      return `${stripTrailingSlashes(String(target.content.baseUrl ?? ''))}/`;
     }
     return null;
   };

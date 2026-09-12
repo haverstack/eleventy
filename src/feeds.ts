@@ -19,8 +19,19 @@ const xmlEscape = (s: string): string =>
     (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c] as string,
   );
 
+/**
+ * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
+ * unanchored start is quadratic on adversarial input (many slashes
+ * followed by a non-slash), and `baseUrl` comes from record content.
+ */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return s.slice(0, end);
+}
+
 const absolute = (baseUrl: string, path: string): string =>
-  `${baseUrl.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+  `${stripTrailingSlashes(baseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
 
 function memberDate(record: StackRecord): string {
   const publishedAt = record.content.publishedAt;

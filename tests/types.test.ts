@@ -57,9 +57,8 @@ describe('defineEleventyTypes', () => {
 describe('sidecar type definitions', () => {
   test('are namespaced under org.haverstack.eleventy at version 1', () => {
     for (const type of ELEVENTY_TYPES) {
-      expect(type.id).toMatch(
-        new RegExp(`^${ELEVENTY_NAMESPACE.replace(/\./g, '\\.')}/[a-z-]+@1$`),
-      );
+      const escapedNamespace = ELEVENTY_NAMESPACE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expect(type.id).toMatch(new RegExp(`^${escapedNamespace}/[a-z-]+@1$`));
     }
   });
 

@@ -16,6 +16,17 @@ import type { ResolvedMember, ResolvedMenu, ResolvedPage, ResolvedSite } from '.
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
 
+/**
+ * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
+ * unanchored start is quadratic on adversarial input (many slashes
+ * followed by a non-slash), and `baseUrl` comes from record content.
+ */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return s.slice(0, end);
+}
+
 const esc = (s: unknown): string =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -65,7 +76,7 @@ function documentShell(opts: {
   const { resolved } = opts;
   const siteTitle = resolved.site ? String(resolved.site.content.title ?? '') : '';
   const description = resolved.site?.content.description;
-  const baseUrl = String(resolved.site?.content.baseUrl ?? '').replace(/\/+$/, '');
+  const baseUrl = stripTrailingSlashes(String(resolved.site?.content.baseUrl ?? ''));
   const fullTitle = [opts.title, siteTitle].filter(Boolean).join(' · ') || 'Site';
 
   const feedLinks = opts.feeds

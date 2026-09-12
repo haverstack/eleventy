@@ -19,6 +19,17 @@ import { HaverstackEleventyError } from './errors.js';
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
 
+/**
+ * Strip trailing slashes without a backtracking regex — `/\/+$/` on an
+ * unanchored start is quadratic on adversarial input (many slashes
+ * followed by a non-slash), and `baseUrl` comes from record content.
+ */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return s.slice(0, end);
+}
+
 /** Types whose `url` field is the canonical published location (not, say, a bookmark's target). */
 const CANONICAL_URL_TYPES = new Set([baseId(ARTICLE.id), baseId(POST.id)]);
 
@@ -53,7 +64,7 @@ export async function runPublish(stack: Stack, opts: PublishOptions = {}): Promi
       'publish needs a site@1 record: canonical URLs are built from its baseUrl.',
     );
   }
-  const baseUrl = String(resolved.site.content.baseUrl ?? '').replace(/\/+$/, '');
+  const baseUrl = stripTrailingSlashes(String(resolved.site.content.baseUrl ?? ''));
   if (!baseUrl) {
     throw new HaverstackEleventyError(
       `Site "${resolved.site.content.handle as string}" has no baseUrl.`,

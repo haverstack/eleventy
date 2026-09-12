@@ -23,6 +23,19 @@ import type { ResolvedSite, ResolveWarning } from './resolve.js';
 
 const baseId = (typeId: string): string => typeId.split('@')[0];
 
+/**
+ * Strip leading and trailing slashes without a backtracking regex —
+ * `/^\/+|\/+$/g` is quadratic on adversarial input (many slashes abutting
+ * a non-slash), and `assetDir` is a plugin option a site config supplies.
+ */
+function trimSlashes(s: string): string {
+  let start = 0;
+  let end = s.length;
+  while (start < end && s.charCodeAt(start) === 47 /* '/' */) start++;
+  while (end > start && s.charCodeAt(end - 1) === 47 /* '/' */) end--;
+  return s.slice(start, end);
+}
+
 const EXT_BY_MIME: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -97,7 +110,7 @@ export function collectAssets(
   const files = new Map<FileId, StagedFile>();
   const embedsByRecord = new Map<RecordId, Map<string, string>>();
   const warnings: ResolveWarning[] = [];
-  const dir = assetDir.replace(/^\/+|\/+$/g, '');
+  const dir = trimSlashes(assetDir);
 
   const stage = (fileId: FileId, forRecord: RecordId): StagedFile | null => {
     const meta = index.attachmentsByFileId.get(fileId)?.[0];
