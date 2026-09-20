@@ -312,8 +312,14 @@ export async function load(stack: StackClient, opts: LoadOptions = {}): Promise<
     list.push(attachment);
     attachmentsByFileId.set(fileId, list);
   }
+  // Core's total order for "first recorded" (see firstRecordedAttachment in
+  // @haverstack/core/wire): createdAt, then id, so two uploads landing in the
+  // same millisecond still order the same way on every build.
   for (const list of attachmentsByFileId.values()) {
-    list.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    list.sort(
+      (a, b) =>
+        a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    );
   }
 
   const byId = new Map<RecordId, StackRecord>();

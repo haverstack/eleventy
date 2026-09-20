@@ -326,33 +326,53 @@ scale that is sub-second and fine. Two ways to do better, in increasing order of
 
 ### A "did anything change?" gate (one-shot / CI)
 
-`RecordFilter.updatedAt` takes a `{ after: Date }`, so a build can ask whether anything
-relevant changed since last time and, if not, exit before emitting — the deploy step
-then sees no diff. No server, works with `LocalAdapter`.
+The obvious form of this — ask `RecordFilter.updatedAt` for `{ after: lastBuild }` and
+exit before loading if nothing comes back — **is not sound for this plugin**, and the
+reason is worth stating because the query still typechecks and still looks right.
 
-Sketch:
+Since core 0.33–0.35 the journal-tier ops (`associate`, `dissociate`, `permissions`,
+`reparent`, `unlist`, `list`) leave `version` and `updatedAt` exactly where they stand.
+Only `patch` and the whole-record verbs bump. Every one of those no-bump ops changes
+what this plugin emits:
 
-1. After a successful build, persist the **maximum `updatedAt` actually observed**
-   (not `Date.now()` — a write that landed mid-build must not be skipped next time),
-   alongside the set of permalinks emitted.
-2. Next build, for each relevant type run
-   `query({ filter: { typeId, updatedAt: { after: last }, includeDeleted: true, includeUnlisted: true } })`,
-   looping the cursor as everywhere else.
-3. Empty result → skip load/resolve/emit entirely.
-4. Non-empty → full build, then rewrite the state file.
+| No-bump op               | What it moves in the output                                |
+| ------------------------ | ---------------------------------------------------------- |
+| `associate`/`dissociate` | `site` membership, `for-site` scoping, `embed` attachments |
+| `reparent`               | a page's ancestor slugs, so its permalink                  |
+| `unlist`/`list`          | whether a record is in listings, feeds and the sitemap     |
+| `permissions`            | what a non-owner build can see at all                      |
 
-Things that make this subtle:
+So an `updatedAt` gate would skip the build for exactly the edits a site owner is most
+likely to make between builds — adding an article to a site, publishing a draft, moving
+a page. A gate that is wrong in the common case is worse than no gate.
 
-- **Query every type the build reads, not just members.** A `page-meta`, `menu`,
-  `site`, or `_attachment` edit moves _that_ record's `updatedAt`, not the described
-  record's.
-- **Associations count** — `associate` / `dissociate` bump `version` / `updatedAt`, so a
-  new `site` membership or `embed` is caught.
-- **Hard deletes (purges) are not caught** — nothing is left to query. Soft deletes show
-  with `includeDeleted: true`; for purges, diff the persisted permalink set against what
-  now resolves, or accept that a purge needs a manual full rebuild.
-- A query result carries no count, so the gate query obeys the same
-  cursor-to-exhaustion rule as the load phase.
+The durable record of a no-bump write is the journal, and `getJournal()` is per-record:
+it answers "what happened to this record", never "which records changed". There is no
+cross-record journal read, so nothing short of the load sweep can see these changes
+locally.
+
+**The gate therefore moves after load, not before it.** Load is one bounded set of
+queries and is not the slow part; resolve, asset staging and emit are. Sketch:
+
+1. Run load as normal.
+2. Fingerprint the index: for every record, its `id`, `version`, `updatedAt`,
+   `parentId`, `unlistedAt`, and its `associations` and `permissions` in a canonical
+   order — the no-bump aspects have to be in the hash precisely because `version`
+   does not cover them.
+3. Compare against the fingerprint persisted by the last successful build. Equal →
+   skip resolve/emit/staging and leave the output tree alone, so the deploy step sees
+   no diff. Different → full build, then rewrite the state file.
+
+Things that stay subtle:
+
+- **Load every type the build reads, not just members.** A `page-meta`, `menu`, `site`,
+  or `_attachment` edit moves _that_ record, not the described record — the fingerprint
+  covers them because load already fetches them.
+- **Hard deletes (purges) are caught by this shape**, unlike the `updatedAt` gate: a
+  purged record simply stops appearing in the sweep, which changes the fingerprint.
+  Soft deletes need `includeDeleted: true` only if the build wants to distinguish them.
+- A query result carries no count, so the sweep obeys the same cursor-to-exhaustion
+  rule as the load phase.
 
 ### A watching `--serve` (needs a stack server)
 
@@ -376,8 +396,18 @@ the right call.
   needed if the integration drives Eleventy programmatically instead.
 - The subscription's `ChangeFilter` only narrows by `typeId` / `parentId` / `entityId` /
   `kinds` — not content or associations — so expect changes the current site does not
-  care about and let the rebuild sort it out. Publishing a record (clearing
-  `unlistedAt`) arrives as an ordinary `changed` event, so no special case.
+  care about and let the rebuild sort it out.
+- **Read `RecordChange.ops`, not `version`.** A change frame carries `ops: ChangeOp[]`,
+  and the journal-tier ops (`associate`, `dissociate`, `permissions`, `reparent`,
+  `unlist`, `list`) report the record's version and `updatedAt` unchanged. A watcher
+  that dedupes on `version` would drop precisely the membership, publish and move
+  events the site cares about. Publishing a record arrives as a `list` op under a
+  `changed` kind, so it needs no special case beyond not being filtered out by a
+  version comparison.
+- `associate`/`dissociate` frames carry `associationsAdded`/`associationsRemoved`, so a
+  watcher can tell a `site` membership change from an unrelated tag without refetching
+  the record. Since the rebuild is full either way, this is only useful for deciding
+  whether to rebuild at all.
 
 ### Why not page-level incremental
 

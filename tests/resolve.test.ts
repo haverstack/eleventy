@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { Stack, type Association, type Permission } from '@haverstack/core';
+import { Stack, type AuthorityAssociation, type DataAssociation } from '@haverstack/core';
 import { MemoryAdapter } from '@haverstack/core/testing';
 import { ARTICLE, PAGE, POST, SITE } from '@haverstack/commons';
 import {
@@ -14,7 +14,7 @@ import {
   type ResolveConfig,
 } from '../src/index.js';
 
-const PUBLIC: Permission[] = [{ access: 'public' }];
+const PUBLIC: AuthorityAssociation[] = [{ kind: 'anyone', label: 'read' }];
 const iso = (d: string) => new Date(d).toISOString();
 const CONFIG: ResolveConfig = { slugStrategy: 'title' };
 
@@ -63,7 +63,7 @@ async function worked() {
   const meta = (
     parentId: string,
     content: Record<string, unknown>,
-    associations: Association[] = [],
+    associations: DataAssociation[] = [],
   ) => stack.create(PAGE_META.id, content, { parentId, permissions: PUBLIC, associations });
   const article = (
     content: Record<string, unknown>,
