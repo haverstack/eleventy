@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { Stack, type Permission } from '@haverstack/core';
+import { Stack, type AuthorityAssociation } from '@haverstack/core';
 import { MemoryAdapter } from '@haverstack/core/testing';
 import { ARTICLE, PAGE, SITE } from '@haverstack/commons';
 import {
@@ -13,7 +13,7 @@ import {
   type ResolvedSite,
 } from '../src/index.js';
 
-const PUBLIC: Permission[] = [{ access: 'public' }];
+const PUBLIC: AuthorityAssociation[] = [{ kind: 'anyone', label: 'read' }];
 const iso = (d: string) => new Date(d).toISOString();
 const onSite = (id: string) => ({
   kind: 'relationship' as const,

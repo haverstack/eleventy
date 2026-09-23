@@ -129,7 +129,10 @@ export function collectAssets(
       if (!staged) continue;
       // One fileId can have several _attachment@1 records (one per upload),
       // each with its own filename. The body might reference any of them,
-      // so every known name points at the one staged path.
+      // so every known name points at the one staged path. This is why the
+      // association's `attachmentRecordId` is not consulted: content
+      // addressing gives a fileId exactly one staged path, so resolving
+      // which upload a reference came from would pick the same string.
       for (const meta of index.attachmentsByFileId.get(fileId) ?? []) {
         const filename = meta.content.filename;
         if (typeof filename === 'string' && filename) embedMap.set(filename, staged.assetPath);

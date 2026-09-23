@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { Stack, type Association, type Permission } from '@haverstack/core';
+import { Stack, type AuthorityAssociation, type DataAssociation } from '@haverstack/core';
 import { MemoryAdapter } from '@haverstack/core/testing';
 import { ARTICLE, PAGE, SITE } from '@haverstack/commons';
 import {
@@ -13,14 +13,14 @@ import {
   SITE_MEMBERSHIP_LABEL,
 } from '../src/index.js';
 
-const PUBLIC: Permission[] = [{ access: 'public' }];
+const PUBLIC: AuthorityAssociation[] = [{ kind: 'anyone', label: 'read' }];
 const iso = (d: string) => new Date(d).toISOString();
-const onSite = (id: string): Association => ({
+const onSite = (id: string): DataAssociation => ({
   kind: 'relationship',
   label: SITE_MEMBERSHIP_LABEL,
   target: { scope: 'record', recordId: id },
 });
-const forSite = (id: string): Association => ({
+const forSite = (id: string): DataAssociation => ({
   kind: 'relationship',
   label: FOR_SITE_LABEL,
   target: { scope: 'record', recordId: id },
